@@ -9,9 +9,12 @@ import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEn
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerRemoveEntityEffect;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerSetPassengers;
 import com.mattmx.nametags.entity.NameTagEntity;
+import com.mattmx.nametags.hook.VanishHook;
 import com.mattmx.nametags.packet.PlayServerEntityMetaDataHandler;
 import com.mattmx.nametags.packet.PlayServerSetPassengersHandler;
 import com.mattmx.nametags.packet.PlayServerSpawnEntityHandler;
+import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Arrays;
@@ -75,6 +78,18 @@ public class OutgoingPacketListener extends PacketListenerAbstract {
                 // (e.g., if the entity was invisible when they first spawned it)
                 event.getTasksAfterSend().add(() -> plugin.getExecutor().execute(() -> {
                     if (!nameTagEntity.getPassenger().getViewers().contains(event.getUser().getUUID())) {
+                        // Don't re-add the viewer if the nametag is admin-disabled
+                        if (plugin.getEntityManager()
+                                .isNameTagDisabled(nameTagEntity.getBukkitEntity().getUniqueId())) {
+                            return;
+                        }
+                        // Don't re-add the viewer if the entity owner is vanished from them
+                        if (nameTagEntity.getBukkitEntity() instanceof Player target) {
+                            Player viewer = Bukkit.getPlayer(event.getUser().getUUID());
+                            if (viewer != null && !VanishHook.canSee(viewer, target)) {
+                                return;
+                            }
+                        }
                         nameTagEntity.updateLocation();
                         nameTagEntity.getPassenger().addViewer(event.getUser());
                         event.getUser().sendPacket(nameTagEntity.getPassengersPacket());

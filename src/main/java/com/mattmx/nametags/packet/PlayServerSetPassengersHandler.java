@@ -4,6 +4,9 @@ import com.github.retrooper.packetevents.event.PacketSendEvent;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerSetPassengers;
 import com.mattmx.nametags.NameTags;
 import com.mattmx.nametags.entity.NameTagEntity;
+import com.mattmx.nametags.hook.VanishHook;
+import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Arrays;
@@ -16,7 +19,26 @@ public class PlayServerSetPassengersHandler {
 
         final NameTagEntity nameTagEntity = plugin.getEntityManager().getNameTagEntityById(packet.getEntityId());
 
-        if (nameTagEntity == null) return;
+        if (nameTagEntity == null)
+            return;
+
+        // Don't inject nametag if it's been admin-disabled
+        if (plugin.getEntityManager().isNameTagDisabled(nameTagEntity.getBukkitEntity().getUniqueId())) {
+            return;
+        }
+
+        // Don't inject nametag if the entity is invisible (e.g., invisibility potion)
+        if (nameTagEntity.isInvisible()) {
+            return;
+        }
+
+        // Don't inject nametag passenger if the owner is vanished from the viewer
+        if (nameTagEntity.getBukkitEntity() instanceof Player target) {
+            Player viewer = Bukkit.getPlayer(event.getUser().getUUID());
+            if (viewer != null && !VanishHook.canSee(viewer, target)) {
+                return;
+            }
+        }
 
         // If the packet doesn't already contain our entity
         boolean containsNameTagPassenger = false;
@@ -26,7 +48,8 @@ public class PlayServerSetPassengersHandler {
             }
         }
 
-        // TODO(Matt)?: Should we process async and then send another passenger packet afterwards?
+        // TODO(Matt)?: Should we process async and then send another passenger packet
+        // afterwards?
         if (!containsNameTagPassenger) {
 
             // Add our entity
@@ -36,8 +59,8 @@ public class PlayServerSetPassengersHandler {
             packet.setPassengers(passengers);
 
             NameTags.getInstance()
-                .getEntityManager()
-                .setLastSentPassengers(packet.getEntityId(), passengers);
+                    .getEntityManager()
+                    .setLastSentPassengers(packet.getEntityId(), passengers);
 
             event.markForReEncode(true);
         }

@@ -2,6 +2,7 @@ package com.mattmx.nametags;
 
 import com.mattmx.nametags.entity.NameTagEntity;
 import com.mattmx.nametags.entity.trait.SneakTrait;
+import com.mattmx.nametags.hook.VanishHook;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -72,6 +73,9 @@ public class EventsListener implements Listener {
 
         if (nameTagEntity == null)
             return;
+
+        // Clear stale passenger cache from the previous world
+        plugin.getEntityManager().removeLastSentPassengersCache(event.getPlayer().getEntityId());
 
         nameTagEntity.updateLocation();
 
@@ -180,6 +184,10 @@ public class EventsListener implements Listener {
                         continue;
                     }
                     if (!viewer.getWorld().equals(player.getWorld())) {
+                        continue;
+                    }
+                    // Don't re-add the viewer if the player is vanished from them
+                    if (!VanishHook.canSee(viewer, player)) {
                         continue;
                     }
                     if (!nameTagEntity.getPassenger().getViewers().contains(viewer.getUniqueId())) {

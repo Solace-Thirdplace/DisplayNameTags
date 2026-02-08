@@ -5,6 +5,7 @@ import com.github.retrooper.packetevents.PacketEventsAPI;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.mattmx.nametags.config.ConfigDefaultsListener;
 import com.mattmx.nametags.config.TextFormatter;
+import com.mattmx.nametags.entity.NameTagEntity;
 import com.mattmx.nametags.entity.NameTagEntityManager;
 import com.mattmx.nametags.hook.NeznamyTABHook;
 import com.mattmx.nametags.hook.SkinRestorerHook;
@@ -144,6 +145,11 @@ public class NameTags extends JavaPlugin {
     @Override
     public void onDisable() {
         metrics.shutdown();
+
+        // Destroy all nametag entities to prevent orphaned text displays
+        for (NameTagEntity entity : entityManager.getAllEntities()) {
+            entity.destroy();
+        }
 
         HandlerList.unregisterAll(this.eventsListener);
 
