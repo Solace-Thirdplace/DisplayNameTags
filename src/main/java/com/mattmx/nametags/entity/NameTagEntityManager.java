@@ -24,6 +24,10 @@ public class NameTagEntityManager {
     // Set of player UUIDs whose nametags are disabled by an admin
     private final Set<UUID> disabledNameTags = ConcurrentHashMap.newKeySet();
 
+    // Set of admin UUIDs who can see all nametags regardless of invisibility
+    // (per-session)
+    private final Set<UUID> debugViewPlayers = ConcurrentHashMap.newKeySet();
+
     private final Cache<UUID, NameTagEntity> nameTagCache = Caffeine.newBuilder()
             .expireAfterAccess(Duration.ofMinutes(1))
             .removalListener(this::handleRemoval)
@@ -163,6 +167,34 @@ public class NameTagEntityManager {
             disabledNameTags.add(uuid);
         } else {
             disabledNameTags.remove(uuid);
+        }
+    }
+
+    /**
+     * Check if a player has debug view enabled (can see all nametags regardless of
+     * invisibility).
+     * This is a per-session toggle that resets when the player logs out.
+     * 
+     * @param uuid The player's UUID
+     * @return true if debug view is enabled
+     */
+    public boolean hasDebugView(@NotNull UUID uuid) {
+        return debugViewPlayers.contains(uuid);
+    }
+
+    /**
+     * Toggle debug view for a player.
+     * 
+     * @param uuid The player's UUID
+     * @return true if debug view is now enabled, false if disabled
+     */
+    public boolean toggleDebugView(@NotNull UUID uuid) {
+        if (debugViewPlayers.contains(uuid)) {
+            debugViewPlayers.remove(uuid);
+            return false;
+        } else {
+            debugViewPlayers.add(uuid);
+            return true;
         }
     }
 

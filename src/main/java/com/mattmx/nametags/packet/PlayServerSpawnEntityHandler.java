@@ -76,7 +76,8 @@ public class PlayServerSpawnEntityHandler {
 
         // Check if the entity is invisible (e.g., from invisibility potion)
         // Don't show nametag if they're invisible (vanilla behavior)
-        if (nameTagEntity.isInvisible()) {
+        // unless the viewer has debug view enabled
+        if (nameTagEntity.isInvisible() && !plugin.getEntityManager().hasDebugView(receiver.getUUID())) {
             return;
         }
 

@@ -28,7 +28,8 @@ public class PlayServerSetPassengersHandler {
         }
 
         // Don't inject nametag if the entity is invisible (e.g., invisibility potion)
-        if (nameTagEntity.isInvisible()) {
+        // unless the viewer has debug view enabled
+        if (nameTagEntity.isInvisible() && !plugin.getEntityManager().hasDebugView(event.getUser().getUUID())) {
             return;
         }
 

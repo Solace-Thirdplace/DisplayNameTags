@@ -116,6 +116,42 @@ esac
 
 CLASSPATH="\\\"\\\""
 
+# Enforce Java 21 for this project in a cross-platform way.
+# Priority: JDK21_HOME -> JAVA_HOME (if already Java 21) -> system detection.
+require_java21() {
+    "$1" -version 2>&1 | sed -n '1s/.*version "\([0-9][0-9]*\).*/\1/p' | grep -qx '21'
+}
+
+if [ -n "$JDK21_HOME" ] && [ -x "$JDK21_HOME/bin/java" ]; then
+    JAVA_HOME=$JDK21_HOME
+elif [ -n "$JAVA_HOME" ] && [ -x "$JAVA_HOME/bin/java" ] && require_java21 "$JAVA_HOME/bin/java"; then
+    :
+elif [ "$darwin" = true ] && [ -x /usr/libexec/java_home ]; then
+    DETECTED_JAVA_HOME=$( /usr/libexec/java_home -v 21 2>/dev/null )
+    if [ -n "$DETECTED_JAVA_HOME" ] && [ -x "$DETECTED_JAVA_HOME/bin/java" ]; then
+        JAVA_HOME=$DETECTED_JAVA_HOME
+    fi
+elif [ -x /usr/lib/jvm/java-21-openjdk/bin/java ]; then
+    JAVA_HOME=/usr/lib/jvm/java-21-openjdk
+else
+    DETECTED_JAVA_HOME=$(find /usr/lib/jvm "$HOME/.sdkman/candidates/java" 2>/dev/null \
+        -mindepth 1 -maxdepth 2 -type f -name java \
+        | grep '/bin/java$' \
+        | while IFS= read -r j; do
+              if "$j" -version 2>&1 | sed -n '1s/.*version "\([0-9][0-9]*\).*/\1/p' | grep -qx '21'; then
+                  dirname "$(dirname "$j")"
+                  break
+              fi
+          done)
+    if [ -n "$DETECTED_JAVA_HOME" ]; then
+        JAVA_HOME=$DETECTED_JAVA_HOME
+    fi
+fi
+
+if [ -n "$JAVA_HOME" ] && [ -x "$JAVA_HOME/bin/java" ]; then
+    export JAVA_HOME
+fi
+
 
 # Determine the Java command to use to start the JVM.
 if [ -n "$JAVA_HOME" ] ; then
@@ -140,6 +176,14 @@ else
 Please set the JAVA_HOME variable in your environment to match the
 location of your Java installation."
     fi
+fi
+
+if ! require_java21 "$JAVACMD"; then
+    die "ERROR: This project requires Java 21 to run Gradle.
+
+Detected JVM: $($JAVACMD -version 2>&1 | head -1)
+
+Set JDK21_HOME (preferred) or JAVA_HOME to a JDK 21 installation."
 fi
 
 # Increase the maximum file descriptors if we can.

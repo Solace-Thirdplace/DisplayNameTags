@@ -21,7 +21,8 @@ public class SkinRestorerHook {
     private static void start() {
         final boolean isSkinRestorer = Bukkit.getPluginManager().isPluginEnabled("SkinsRestorer");
 
-        if (!isSkinRestorer) return;
+        if (!isSkinRestorer)
+            return;
 
         NameTags plugin = NameTags.getInstance();
         SkinsRestorer skinsRestorer = SkinsRestorerProvider.get();
@@ -37,7 +38,8 @@ public class SkinRestorerHook {
     private static void onSkinApply(SkinApplyEvent event) {
         Player player = event.getPlayer(Player.class);
 
-        if (player == null) return;
+        if (player == null)
+            return;
 
         new BukkitRunnable() {
             @Override
@@ -56,12 +58,33 @@ public class SkinRestorerHook {
                 newEntity.updateVisibility();
                 newEntity.updateLocation();
 
+                // Only show to self if configured
                 if (plugin.getConfig().getBoolean("show-self", false)) {
                     newEntity.getPassenger().removeViewer(newEntity.getBukkitEntity().getUniqueId());
                     newEntity.getPassenger().addViewer(newEntity.getBukkitEntity().getUniqueId());
                     newEntity.sendPassengerPacket(event.getPlayer(Player.class));
 
-                    player.sendMessage(Component.text("Please re-join for update your nametag!").color(NamedTextColor.GREEN));
+                    player.sendMessage(
+                            Component.text("Please re-join for update your nametag!").color(NamedTextColor.GREEN));
+                }
+
+                // Don't show to other viewers if player is invisible or vanished
+                if (newEntity.isInvisible() || VanishHook.isVanished(player)) {
+                    return;
+                }
+
+                // Re-add viewers who should see this player's nametag in their world
+                for (Player viewer : Bukkit.getOnlinePlayers()) {
+                    if (viewer.equals(player))
+                        continue;
+                    if (!viewer.getWorld().equals(player.getWorld()))
+                        continue;
+                    if (!VanishHook.canSee(viewer, player))
+                        continue;
+
+                    newEntity.getPassenger().removeViewer(viewer.getUniqueId());
+                    newEntity.getPassenger().addViewer(viewer.getUniqueId());
+                    newEntity.sendPassengerPacket(viewer);
                 }
             }
         }.runTask(NameTags.getInstance());

@@ -38,12 +38,18 @@ for %%i in ("%APP_HOME%") do set APP_HOME=%%~fi
 @rem Add default JVM options here. You can also use JAVA_OPTS and GRADLE_OPTS to pass JVM options to this script.
 set DEFAULT_JVM_OPTS="-Xmx64m" "-Xms64m"
 
+@rem Enforce Java 21 in a cross-platform-friendly way for Windows.
+@rem Priority: JDK21_HOME -> JAVA_HOME -> PATH java (validated afterwards).
+if defined JDK21_HOME (
+	set JAVA_HOME=%JDK21_HOME%
+)
+
 @rem Find java.exe
 if defined JAVA_HOME goto findJavaFromJavaHome
 
 set JAVA_EXE=java.exe
 %JAVA_EXE% -version >NUL 2>&1
-if %ERRORLEVEL% equ 0 goto execute
+if %ERRORLEVEL% equ 0 goto validateJavaVersion
 
 echo. 1>&2
 echo ERROR: JAVA_HOME is not set and no 'java' command could be found in your PATH. 1>&2
@@ -57,7 +63,7 @@ goto fail
 set JAVA_HOME=%JAVA_HOME:"=%
 set JAVA_EXE=%JAVA_HOME%/bin/java.exe
 
-if exist "%JAVA_EXE%" goto execute
+if exist "%JAVA_EXE%" goto validateJavaVersion
 
 echo. 1>&2
 echo ERROR: JAVA_HOME is set to an invalid directory: %JAVA_HOME% 1>&2
@@ -65,6 +71,20 @@ echo. 1>&2
 echo Please set the JAVA_HOME variable in your environment to match the 1>&2
 echo location of your Java installation. 1>&2
 
+goto fail
+
+:validateJavaVersion
+for /f "tokens=3" %%v in ('"%JAVA_EXE%" -version 2^>^&1 ^| findstr /i "version"') do set JAVA_VERSION_RAW=%%v
+set JAVA_VERSION_RAW=%JAVA_VERSION_RAW:"=%
+for /f "tokens=1 delims=." %%m in ("%JAVA_VERSION_RAW%") do set JAVA_VERSION_MAJOR=%%m
+
+if "%JAVA_VERSION_MAJOR%"=="21" goto execute
+
+echo. 1>&2
+echo ERROR: This project requires Java 21 to run Gradle. 1>&2
+echo Detected JVM version: %JAVA_VERSION_RAW% 1>&2
+echo Set JDK21_HOME (preferred) or JAVA_HOME to a JDK 21 installation. 1>&2
+echo. 1>&2
 goto fail
 
 :execute

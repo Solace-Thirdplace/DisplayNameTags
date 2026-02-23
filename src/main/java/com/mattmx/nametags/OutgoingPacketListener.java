@@ -58,6 +58,8 @@ public class OutgoingPacketListener extends PacketListenerAbstract {
                     return;
 
                 nameTagEntity.updateVisibility(true);
+                // Immediately refresh to send updated metadata to all viewers
+                nameTagEntity.getPassenger().refresh();
             }
             case PacketType.Play.Server.REMOVE_ENTITY_EFFECT -> {
                 // TODO per-player impl (teams may be able to see invisible players)

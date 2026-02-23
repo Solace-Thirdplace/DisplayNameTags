@@ -1,5 +1,7 @@
 package com.mattmx.nametags.hook;
 
+import com.github.retrooper.packetevents.PacketEvents;
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerDestroyEntities;
 import com.mattmx.nametags.NameTags;
 import com.mattmx.nametags.entity.NameTagEntity;
 import de.myzelyam.api.vanish.PlayerHideEvent;
@@ -57,6 +59,11 @@ public class VanishEventListener implements Listener {
       // So we need to remove them as a viewer of the vanished player's nametag
       if (!VanishHook.canSee(viewer, vanishedPlayer)) {
         vanishedTag.getPassenger().removeViewer(viewer.getUniqueId());
+
+        // Explicitly send destroy packet to ensure nametag disappears immediately
+        WrapperPlayServerDestroyEntities destroyPacket = new WrapperPlayServerDestroyEntities(
+            vanishedTag.getPassenger().getEntityId());
+        PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, destroyPacket);
       }
     }
   }

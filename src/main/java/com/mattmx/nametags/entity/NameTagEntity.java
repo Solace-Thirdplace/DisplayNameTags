@@ -7,9 +7,11 @@ import com.github.retrooper.packetevents.wrapper.PacketWrapper;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerSetPassengers;
 import com.mattmx.nametags.NameTags;
 import com.mattmx.nametags.entity.trait.TraitHolder;
+import com.mattmx.nametags.hook.VanishHook;
 import io.github.retrooper.packetevents.util.SpigotConversionUtil;
 import me.tofaa.entitylib.meta.display.TextDisplayMeta;
 import me.tofaa.entitylib.wrapper.WrapperEntity;
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
@@ -37,14 +39,53 @@ public class NameTagEntity {
 
         this.passenger.spawn(location);
 
-        if (NameTags.getInstance().getConfig().getBoolean("show-self", false)) {
+        final NameTags plugin = NameTags.getInstance();
+        final boolean showSelf = plugin.getConfig().getBoolean("show-self", false);
 
-            if (this.bukkitEntity instanceof Player self) {
-                this.passenger.addViewer(self.getUniqueId());
-                sendPassengerPacket(self);
-            }
-
+        if (showSelf && this.bukkitEntity instanceof Player self) {
+            this.passenger.addViewer(self.getUniqueId());
+            sendPassengerPacket(self);
         }
+
+        // Players who are already tracking this entity will never receive another
+        // SPAWN_ENTITY packet, so the packet-interception path in
+        // PlayServerSpawnEntityHandler would never fire for them — they would
+        // silently not see the nametag. Seed the viewer set now for them.
+        // Entity#getTrackedBy() must be called on the main thread.
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (!this.bukkitEntity.isValid())
+                return;
+
+            final boolean isInvis = isInvisible();
+            final boolean adminDisabled = plugin.getEntityManager()
+                    .isNameTagDisabled(this.bukkitEntity.getUniqueId());
+
+            if (adminDisabled)
+                return;
+
+            for (final Player viewer : this.bukkitEntity.getTrackedBy()) {
+                // show-self=false: skip the owner (already handled above if show-self=true)
+                if (this.bukkitEntity instanceof Player owner
+                        && viewer.equals(owner)
+                        && !showSelf) {
+                    continue;
+                }
+
+                // Vanish check — only meaningful when the entity itself is a player
+                if (this.bukkitEntity instanceof Player target
+                        && !VanishHook.canSee(viewer, target)) {
+                    continue;
+                }
+
+                // Don't reveal an invisible entity's nametag unless the viewer has debug view
+                if (isInvis && !plugin.getEntityManager().hasDebugView(viewer.getUniqueId())) {
+                    continue;
+                }
+
+                this.passenger.addViewer(viewer.getUniqueId());
+                sendPassengerPacket(viewer);
+            }
+        });
     }
 
     public boolean isInvisible() {

@@ -99,6 +99,29 @@ public class NameTagsCommand implements CommandExecutor, TabCompleter {
                     .text(target.getName() + "'s nametag is now " + (nowDisabled ? "disabled" : "enabled") + ".")
                     .color(nowDisabled ? NamedTextColor.RED : NamedTextColor.GREEN));
             return true;
+        } else if (args[0].equalsIgnoreCase("debugview") || args[0].equalsIgnoreCase("seeall")) {
+            if (!sender.hasPermission("nametags.admin.debugview")) {
+                sender.sendMessage(
+                        Component.text("You don't have permission to use this command.").color(NamedTextColor.RED));
+                return true;
+            }
+
+            if (!(sender instanceof Player player)) {
+                sender.sendMessage(
+                        Component.text("This command can only be used by players.").color(NamedTextColor.RED));
+                return true;
+            }
+
+            boolean nowEnabled = plugin.getEntityManager().toggleDebugView(player.getUniqueId());
+
+            sender.sendMessage(Component
+                    .text("Debug view " + (nowEnabled ? "enabled" : "disabled") + ". ")
+                    .color(nowEnabled ? NamedTextColor.GREEN : NamedTextColor.YELLOW)
+                    .append(Component.text(nowEnabled
+                            ? "You can now see all nametags regardless of invisibility status."
+                            : "Nametags will now respect invisibility status."))
+                    .append(Component.text(" (Per-session only)").color(NamedTextColor.GRAY)));
+            return true;
         } else if (args[0].equalsIgnoreCase("debug")) {
             sender.sendMessage(
                     Component.text("NameTags debug")
@@ -205,7 +228,7 @@ public class NameTagsCommand implements CommandExecutor, TabCompleter {
         if (args.length == 1) {
             String lastArg = args[0].toLowerCase();
             List<String> completions = new ArrayList<>();
-            for (String cmd : new String[] { "reload", "debug", "toggle" }) {
+            for (String cmd : new String[] { "reload", "debug", "toggle", "debugview", "seeall" }) {
                 if (cmd.startsWith(lastArg)) {
                     if (cmd.equals("toggle") && !sender.hasPermission("nametags.admin.toggle")) {
                         continue;

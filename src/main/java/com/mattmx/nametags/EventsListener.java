@@ -52,18 +52,24 @@ public class EventsListener implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST)
     public void onPlayerQuit(@NotNull PlayerQuitEvent event) {
+        UUID playerUuid = event.getPlayer().getUniqueId();
         plugin.getEntityManager().removeLastSentPassengersCache(event.getPlayer().getEntityId());
         // TODO(matt): might not be sending de-spawn packet to viewers all the time?
 
         // Remove as a viewer from all entities
         for (final NameTagEntity entity : plugin.getEntityManager().getAllEntities()) {
-            entity.getPassenger().removeViewer(event.getPlayer().getUniqueId());
+            entity.getPassenger().removeViewer(playerUuid);
         }
 
         NameTagEntity entity = plugin.getEntityManager().removeEntity(event.getPlayer());
 
         if (entity != null) {
             entity.destroy();
+        }
+
+        // Clear per-session debug view on logout
+        if (plugin.getEntityManager().hasDebugView(playerUuid)) {
+            plugin.getEntityManager().toggleDebugView(playerUuid);
         }
     }
 
@@ -77,7 +83,17 @@ public class EventsListener implements Listener {
         // Clear stale passenger cache from the previous world
         plugin.getEntityManager().removeLastSentPassengersCache(event.getPlayer().getEntityId());
 
+        // Remove all viewers from old world - they can't see entities in other worlds
+        // The spawn packet handler will add viewers from the new world automatically
+        Player player = event.getPlayer();
+        for (Player oldWorldPlayer : event.getFrom().getPlayers()) {
+            if (!oldWorldPlayer.equals(player)) {
+                nameTagEntity.getPassenger().removeViewer(oldWorldPlayer.getUniqueId());
+            }
+        }
+
         nameTagEntity.updateLocation();
+        nameTagEntity.updateVisibility();
 
         if (plugin.getConfig().getBoolean("show-self", false)) {
             nameTagEntity.getPassenger().removeViewer(nameTagEntity.getBukkitEntity().getUniqueId());
@@ -197,6 +213,7 @@ public class EventsListener implements Listener {
                 }
             }
 
+            // Refresh to send updated metadata to all viewers
             nameTagEntity.getPassenger().refresh();
         }, 1L);
     }
