@@ -49,23 +49,26 @@ public class VanishEventListener implements Listener {
     if (vanishedTag == null)
       return;
 
-    // Remove all viewers who can no longer see the vanished player
-    for (Player viewer : Bukkit.getOnlinePlayers()) {
-      if (viewer.equals(vanishedPlayer))
-        continue;
+    // Run one tick later so the vanish plugin has already updated per-viewer visibility.
+    Bukkit.getScheduler().runTask(plugin, () -> {
+      boolean showSelf = plugin.getConfig().getBoolean("show-self", false);
 
-      // After this event completes, the viewer won't be able to see the vanished
-      // player
-      // So we need to remove them as a viewer of the vanished player's nametag
-      if (!VanishHook.canSee(viewer, vanishedPlayer)) {
+      for (Player viewer : Bukkit.getOnlinePlayers()) {
+        boolean isSelfHidden = viewer.equals(vanishedPlayer) && !showSelf;
+        boolean canSeeVanishedPlayer = VanishHook.canSee(viewer, vanishedPlayer);
+
+        if (!isSelfHidden && canSeeVanishedPlayer) {
+          continue;
+        }
+
         vanishedTag.getPassenger().removeViewer(viewer.getUniqueId());
 
-        // Explicitly send destroy packet to ensure nametag disappears immediately
+        // Explicitly send destroy packet to avoid stale nametags on clients.
         WrapperPlayServerDestroyEntities destroyPacket = new WrapperPlayServerDestroyEntities(
             vanishedTag.getPassenger().getEntityId());
         PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, destroyPacket);
       }
-    }
+    });
   }
 
   /**
