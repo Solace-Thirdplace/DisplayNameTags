@@ -49,7 +49,8 @@ public class VanishEventListener implements Listener {
     if (vanishedTag == null)
       return;
 
-    // Run one tick later so the vanish plugin has already updated per-viewer visibility.
+    // Run one tick later so the vanish plugin has already updated per-viewer
+    // visibility.
     Bukkit.getScheduler().runTask(plugin, () -> {
       boolean showSelf = plugin.getConfig().getBoolean("show-self", false);
 
