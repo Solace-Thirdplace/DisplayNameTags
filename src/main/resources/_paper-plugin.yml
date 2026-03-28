@@ -7,7 +7,7 @@ loader: ${loader}
 
 dependencies:
   server:
-    PacketEvents:
+    packetevents:
       load: BEFORE
       required: true
       join-classpath: true

@@ -13,7 +13,6 @@ import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.*;
 import org.bukkit.potion.PotionEffectType;
 import org.jetbrains.annotations.NotNull;
-import org.spigotmc.event.player.PlayerSpawnLocationEvent;
 
 import java.util.UUID;
 
@@ -27,15 +26,13 @@ public class EventsListener implements Listener {
 
     @EventHandler(ignoreCancelled = true, priority = EventPriority.MONITOR)
     public void onPlayerJoin(@NotNull PlayerJoinEvent event) {
-        Bukkit.getAsyncScheduler().runNow(plugin, (task) -> {
-            if (!event.getPlayer().isConnected()) {
-                return;
-            }
+        if (!event.getPlayer().isConnected()) {
+            return;
+        }
 
-            plugin.getEntityManager()
-                    .getOrCreateNameTagEntity(event.getPlayer())
-                    .updateVisibility();
-        });
+        plugin.getEntityManager()
+                .getOrCreateNameTagEntity(event.getPlayer())
+                .updateVisibility();
     }
 
     // @EventHandler
