@@ -10,6 +10,7 @@ import com.mattmx.nametags.entity.NameTagEntityManager;
 import com.mattmx.nametags.hook.NeznamyTABHook;
 import com.mattmx.nametags.hook.SkinRestorerHook;
 import com.mattmx.nametags.hook.VanishEventListener;
+import com.mattmx.nametags.hook.VanishHook;
 import com.mattmx.nametags.utils.test.TestPlaceholderExpansion;
 import me.tofaa.entitylib.APIConfig;
 import me.tofaa.entitylib.EntityLib;
@@ -19,6 +20,7 @@ import org.bstats.charts.DrilldownPie;
 import org.bukkit.Bukkit;
 import org.bukkit.Color;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.entity.Player;
 import org.bukkit.event.HandlerList;
 import org.bukkit.permissions.Permission;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -57,6 +59,7 @@ public class NameTags extends JavaPlugin {
         packetListener = new OutgoingPacketListener(this);
 
         saveDefaultConfig();
+        reloadConfig();
 
         metrics = new Metrics(this, 25409);
         registerMetrics();
@@ -90,6 +93,15 @@ public class NameTags extends JavaPlugin {
         if (false) {
             new TestPlaceholderExpansion().register();
         }
+
+        // Create nametags for any players already online (e.g., after plugin reload)
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            entityManager.getOrCreateNameTagEntity(player).updateVisibility();
+        }
+
+        // Periodic viewer reconciliation — catches any missed viewer additions
+        // regardless of root cause (cache timing, race conditions, etc.)
+        Bukkit.getScheduler().runTaskTimer(this, this::reconcileViewers, 100L, 100L);
     }
 
     @Override
@@ -176,5 +188,35 @@ public class NameTags extends JavaPlugin {
 
     public @NotNull TextFormatter getFormatter() {
         return this.formatter;
+    }
+
+    /**
+     * Periodic safety-net that adds any missing viewers to nametags.
+     * Runs on the main thread every 5 seconds.
+     */
+    private void reconcileViewers() {
+        boolean showSelf = getConfig().getBoolean("show-self", false);
+
+        for (NameTagEntity tag : entityManager.getAllEntities()) {
+            if (entityManager.isNameTagDisabled(tag.getBukkitEntity().getUniqueId()))
+                continue;
+            if (tag.isInvisible())
+                continue;
+
+            for (Player tracker : tag.getBukkitEntity().getTrackedBy()) {
+                if (tracker.equals(tag.getBukkitEntity()) && !showSelf)
+                    continue;
+
+                if (tag.getBukkitEntity() instanceof Player target
+                        && !VanishHook.canSee(tracker, target)) {
+                    continue;
+                }
+
+                if (!tag.getPassenger().getViewers().contains(tracker.getUniqueId())) {
+                    tag.getPassenger().addViewer(tracker.getUniqueId());
+                    tag.sendPassengerPacket(tracker);
+                }
+            }
+        }
     }
 }

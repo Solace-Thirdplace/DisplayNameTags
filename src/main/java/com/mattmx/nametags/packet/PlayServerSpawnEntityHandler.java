@@ -13,7 +13,6 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Responsible for appending the name tag spawn packet and
@@ -36,17 +35,22 @@ public class PlayServerSpawnEntityHandler {
         final User user = event.getUser();
         if (nameTagEntity == null) {
 
-            // If it's a player, and they don't have a name tag yet, retry after a delay.
+            // Entity doesn't have a nametag yet. For players this can happen when the
+            // SPAWN_ENTITY packet races the PlayerJoinEvent, or after a Caffeine cache
+            // eviction window. Schedule a main-thread retry that will create the tag
+            // if it still doesn't exist.
             if (packet.getEntityType() == EntityTypes.PLAYER) {
-                Bukkit.getAsyncScheduler().runDelayed(plugin, (task) -> {
-                    final NameTagEntity nameTagEntity0 = plugin.getEntityManager().getNameTagEntityByUUID(packetUUID);
-
-                    if (nameTagEntity0 == null) {
+                Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                    final Player player = Bukkit.getPlayer(packetUUID);
+                    if (player == null || !player.isOnline())
                         return;
-                    }
 
-                    attachPassengerToEntity(nameTagEntity0, user);
-                }, 1L, TimeUnit.SECONDS);
+                    final NameTagEntity resolved = plugin.getEntityManager()
+                            .getOrCreateNameTagEntity(player);
+                    resolved.updateVisibility();
+
+                    plugin.getExecutor().execute(() -> attachPassengerToEntity(resolved, user));
+                }, 20L);
             }
 
             return;

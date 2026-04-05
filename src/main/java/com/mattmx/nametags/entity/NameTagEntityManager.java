@@ -88,11 +88,21 @@ public class NameTagEntityManager {
     }
 
     public @Nullable NameTagEntity getNameTagEntityById(int entityId) {
-        return nameTagEntityByEntityId.get(entityId);
+        NameTagEntity tag = nameTagEntityByEntityId.get(entityId);
+        if (tag != null) {
+            // Touch the cache to prevent expireAfterAccess eviction
+            nameTagCache.getIfPresent(tag.getBukkitEntity().getUniqueId());
+        }
+        return tag;
     }
 
     public @Nullable NameTagEntity getNameTagEntityByTagEntityId(int tagEntityId) {
-        return nameTagEntityByPassengerEntityId.get(tagEntityId);
+        NameTagEntity tag = nameTagEntityByPassengerEntityId.get(tagEntityId);
+        if (tag != null) {
+            // Touch the cache to prevent expireAfterAccess eviction
+            nameTagCache.getIfPresent(tag.getBukkitEntity().getUniqueId());
+        }
+        return tag;
     }
 
     public @NotNull Map<UUID, NameTagEntity> getMappedEntities() {
