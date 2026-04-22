@@ -2,6 +2,7 @@ package com.mattmx.nametags;
 
 import com.github.retrooper.packetevents.PacketEvents;
 import com.github.retrooper.packetevents.PacketEventsAPI;
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerDestroyEntities;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.mattmx.nametags.config.ConfigDefaultsListener;
 import com.mattmx.nametags.config.TextFormatter;
@@ -11,6 +12,9 @@ import com.mattmx.nametags.hook.NeznamyTABHook;
 import com.mattmx.nametags.hook.SkinRestorerHook;
 import com.mattmx.nametags.hook.VanishEventListener;
 import com.mattmx.nametags.hook.VanishHook;
+import com.mattmx.nametags.visibility.ExyliaEventsVisibilityProvider;
+import com.mattmx.nametags.visibility.NameTagVisibilityProvider;
+import com.mattmx.nametags.visibility.PermissiveNameTagVisibilityProvider;
 import com.mattmx.nametags.utils.test.TestPlaceholderExpansion;
 import me.tofaa.entitylib.APIConfig;
 import me.tofaa.entitylib.EntityLib;
@@ -20,6 +24,7 @@ import org.bstats.charts.DrilldownPie;
 import org.bukkit.Bukkit;
 import org.bukkit.Color;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.HandlerList;
 import org.bukkit.permissions.Permission;
@@ -30,6 +35,8 @@ import org.jetbrains.annotations.Nullable;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 
@@ -40,6 +47,7 @@ public class NameTags extends JavaPlugin {
     private final HashMap<String, ConfigurationSection> groups = new HashMap<>();
     private @Nullable Executor executor = null;
     private @NotNull TextFormatter formatter = TextFormatter.MINI_MESSAGE;
+    private @NotNull NameTagVisibilityProvider visibilityProvider = PermissiveNameTagVisibilityProvider.INSTANCE;
     private NameTagEntityManager entityManager;
     private EventsListener eventsListener;
     private OutgoingPacketListener packetListener;
@@ -60,6 +68,7 @@ public class NameTags extends JavaPlugin {
 
         saveDefaultConfig();
         reloadConfig();
+        visibilityProvider = ExyliaEventsVisibilityProvider.create(this);
 
         metrics = new Metrics(this, 25409);
         registerMetrics();
@@ -99,9 +108,9 @@ public class NameTags extends JavaPlugin {
             entityManager.getOrCreateNameTagEntity(player).updateVisibility();
         }
 
-        // Periodic viewer reconciliation — catches any missed viewer additions
-        // regardless of root cause (cache timing, race conditions, etc.)
-        Bukkit.getScheduler().runTaskTimer(this, this::reconcileViewers, 100L, 100L);
+        // Periodic viewer reconciliation — keeps nametag viewers aligned with
+        // the current visibility policy and catches missed transitions.
+        Bukkit.getScheduler().runTaskTimer(this, this::reconcileViewers, 20L, 20L);
     }
 
     @Override
@@ -182,6 +191,44 @@ public class NameTags extends JavaPlugin {
         return this.entityManager;
     }
 
+    public boolean canViewerSeeNametag(@NotNull Player viewer, @NotNull NameTagEntity tag) {
+        if (!viewer.isOnline()) {
+            return false;
+        }
+
+        Entity owner = tag.getBukkitEntity();
+        if (!viewer.getWorld().equals(owner.getWorld())) {
+            return false;
+        }
+
+        boolean debugView = entityManager.hasDebugView(viewer.getUniqueId());
+        if (tag.isInvisible() && !debugView) {
+            return false;
+        }
+
+        if (!(owner instanceof Player target)) {
+            return true;
+        }
+
+        if (!VanishHook.canSee(viewer, target)) {
+            return false;
+        }
+
+        return debugView || visibilityProvider.canSee(viewer, target);
+    }
+
+    public void showTagToViewer(@NotNull NameTagEntity tag, @NotNull Player viewer) {
+        tag.updateLocation();
+        tag.getPassenger().removeViewer(viewer.getUniqueId());
+        tag.getPassenger().addViewer(viewer.getUniqueId());
+        tag.sendPassengerPacket(viewer);
+    }
+
+    public void hideTagFromViewer(@NotNull NameTagEntity tag, @NotNull Player viewer) {
+        tag.getPassenger().removeViewer(viewer.getUniqueId());
+        PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, new WrapperPlayServerDestroyEntities(tag.getPassenger().getEntityId()));
+    }
+
     public HashMap<String, ConfigurationSection> getGroups() {
         return groups;
     }
@@ -191,8 +238,8 @@ public class NameTags extends JavaPlugin {
     }
 
     /**
-     * Periodic safety-net that adds any missing viewers to nametags.
-     * Runs on the main thread every 5 seconds.
+     * Periodic safety-net that reconciles both missing and stale viewers.
+     * Runs on the main thread every second.
      */
     private void reconcileViewers() {
         boolean showSelf = getConfig().getBoolean("show-self", false);
@@ -200,21 +247,29 @@ public class NameTags extends JavaPlugin {
         for (NameTagEntity tag : entityManager.getAllEntities()) {
             if (entityManager.isNameTagDisabled(tag.getBukkitEntity().getUniqueId()))
                 continue;
-            if (tag.isInvisible())
-                continue;
+
+            for (UUID viewerId : Set.copyOf(tag.getPassenger().getViewers())) {
+                Player viewer = Bukkit.getPlayer(viewerId);
+                boolean sameWorld = viewer != null && viewer.isOnline() && viewer.getWorld().equals(tag.getBukkitEntity().getWorld());
+                boolean tracked = sameWorld && tag.getBukkitEntity().getTrackedBy().contains(viewer);
+                boolean canSee = tracked && !(viewer.equals(tag.getBukkitEntity()) && !showSelf) && canViewerSeeNametag(viewer, tag);
+                if (!canSee) {
+                    if (viewer != null) {
+                        hideTagFromViewer(tag, viewer);
+                    } else {
+                        tag.getPassenger().removeViewer(viewerId);
+                    }
+                }
+            }
 
             for (Player tracker : tag.getBukkitEntity().getTrackedBy()) {
                 if (tracker.equals(tag.getBukkitEntity()) && !showSelf)
                     continue;
-
-                if (tag.getBukkitEntity() instanceof Player target
-                        && !VanishHook.canSee(tracker, target)) {
+                if (!canViewerSeeNametag(tracker, tag))
                     continue;
-                }
 
                 if (!tag.getPassenger().getViewers().contains(tracker.getUniqueId())) {
-                    tag.getPassenger().addViewer(tracker.getUniqueId());
-                    tag.sendPassengerPacket(tracker);
+                    showTagToViewer(tag, tracker);
                 }
             }
         }

@@ -7,7 +7,6 @@ import com.github.retrooper.packetevents.protocol.player.User;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerSpawnEntity;
 import com.mattmx.nametags.NameTags;
 import com.mattmx.nametags.entity.NameTagEntity;
-import com.mattmx.nametags.hook.VanishHook;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
@@ -69,19 +68,8 @@ public class PlayServerSpawnEntityHandler {
             return;
         }
 
-        // Check if the nametag owner is vanished from the receiver
-        if (nameTagEntity.getBukkitEntity() instanceof Player target) {
-            Player viewer = Bukkit.getPlayer(receiver.getUUID());
-            if (viewer != null && !VanishHook.canSee(viewer, target)) {
-                // Viewer can't see the vanished player, don't show nametag
-                return;
-            }
-        }
-
-        // Check if the entity is invisible (e.g., from invisibility potion)
-        // Don't show nametag if they're invisible (vanilla behavior)
-        // unless the viewer has debug view enabled
-        if (nameTagEntity.isInvisible() && !plugin.getEntityManager().hasDebugView(receiver.getUUID())) {
+        Player viewer = Bukkit.getPlayer(receiver.getUUID());
+        if (viewer == null || !plugin.canViewerSeeNametag(viewer, nameTagEntity)) {
             return;
         }
 
@@ -89,10 +77,7 @@ public class PlayServerSpawnEntityHandler {
         nameTagEntity.updateLocation();
 
         // Refreshes as viewer (crusty fix)
-        nameTagEntity.getPassenger().removeViewer(receiver);
-        nameTagEntity.getPassenger().addViewer(receiver);
-
-        receiver.sendPacket(nameTagEntity.getPassengersPacket());
+        plugin.showTagToViewer(nameTagEntity, viewer);
     }
 
 }

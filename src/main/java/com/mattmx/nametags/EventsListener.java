@@ -2,7 +2,6 @@ package com.mattmx.nametags;
 
 import com.mattmx.nametags.entity.NameTagEntity;
 import com.mattmx.nametags.entity.trait.SneakTrait;
-import com.mattmx.nametags.hook.VanishHook;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -199,13 +198,11 @@ public class EventsListener implements Listener {
                     if (!viewer.getWorld().equals(player.getWorld())) {
                         continue;
                     }
-                    // Don't re-add the viewer if the player is vanished from them
-                    if (!VanishHook.canSee(viewer, player)) {
+                    if (!plugin.canViewerSeeNametag(viewer, nameTagEntity)) {
                         continue;
                     }
                     if (!nameTagEntity.getPassenger().getViewers().contains(viewer.getUniqueId())) {
-                        nameTagEntity.getPassenger().addViewer(viewer.getUniqueId());
-                        nameTagEntity.sendPassengerPacket(viewer);
+                        plugin.showTagToViewer(nameTagEntity, viewer);
                     }
                 }
             }

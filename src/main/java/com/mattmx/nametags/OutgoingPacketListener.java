@@ -9,7 +9,6 @@ import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEn
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerRemoveEntityEffect;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerSetPassengers;
 import com.mattmx.nametags.entity.NameTagEntity;
-import com.mattmx.nametags.hook.VanishHook;
 import com.mattmx.nametags.packet.PlayServerEntityMetaDataHandler;
 import com.mattmx.nametags.packet.PlayServerSetPassengersHandler;
 import com.mattmx.nametags.packet.PlayServerSpawnEntityHandler;
@@ -85,16 +84,11 @@ public class OutgoingPacketListener extends PacketListenerAbstract {
                                 .isNameTagDisabled(nameTagEntity.getBukkitEntity().getUniqueId())) {
                             return;
                         }
-                        // Don't re-add the viewer if the entity owner is vanished from them
-                        if (nameTagEntity.getBukkitEntity() instanceof Player target) {
-                            Player viewer = Bukkit.getPlayer(event.getUser().getUUID());
-                            if (viewer != null && !VanishHook.canSee(viewer, target)) {
-                                return;
-                            }
+                        Player viewer = Bukkit.getPlayer(event.getUser().getUUID());
+                        if (viewer == null || !plugin.canViewerSeeNametag(viewer, nameTagEntity)) {
+                            return;
                         }
-                        nameTagEntity.updateLocation();
-                        nameTagEntity.getPassenger().addViewer(event.getUser());
-                        event.getUser().sendPacket(nameTagEntity.getPassengersPacket());
+                        plugin.showTagToViewer(nameTagEntity, viewer);
                     }
                 }));
             }

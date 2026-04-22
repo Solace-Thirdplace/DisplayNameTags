@@ -1,7 +1,6 @@
 package com.mattmx.nametags;
 
 import com.mattmx.nametags.entity.NameTagEntity;
-import com.mattmx.nametags.hook.VanishHook;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -84,12 +83,10 @@ public class NameTagsCommand implements CommandExecutor, TabCompleter {
                         if (!viewer.getWorld().equals(target.getWorld())) {
                             continue;
                         }
-                        // Skip if target is vanished from this viewer
-                        if (!VanishHook.canSee(viewer, target)) {
+                        if (!plugin.canViewerSeeNametag(viewer, tag)) {
                             continue;
                         }
-                        tag.getPassenger().addViewer(viewer.getUniqueId());
-                        tag.sendPassengerPacket(viewer);
+                        plugin.showTagToViewer(tag, viewer);
                     }
                     tag.getPassenger().refresh();
                 }
@@ -199,20 +196,10 @@ public class NameTagsCommand implements CommandExecutor, TabCompleter {
                     continue; // Skip players in different worlds
                 }
 
-                // Skip if player is vanished and viewer can't see them
-                if (!VanishHook.canSee(viewer, player)) {
+                if (!plugin.canViewerSeeNametag(viewer, newTag)) {
                     continue;
                 }
-
-                // Update location before adding viewers to ensure correct position
-                newTag.updateLocation();
-
-                // Remove and re-add viewer to ensure spawn packets are sent fresh
-                // (mirrors the behavior in
-                // PlayServerSpawnEntityHandler.attachPassengerToEntity)
-                newTag.getPassenger().removeViewer(viewer.getUniqueId());
-                newTag.getPassenger().addViewer(viewer.getUniqueId());
-                newTag.sendPassengerPacket(viewer);
+                plugin.showTagToViewer(newTag, viewer);
             }
 
             newTag.updateVisibility();

@@ -79,12 +79,9 @@ public class SkinRestorerHook {
                         continue;
                     if (!viewer.getWorld().equals(player.getWorld()))
                         continue;
-                    if (!VanishHook.canSee(viewer, player))
+                    if (!plugin.canViewerSeeNametag(viewer, newEntity))
                         continue;
-
-                    newEntity.getPassenger().removeViewer(viewer.getUniqueId());
-                    newEntity.getPassenger().addViewer(viewer.getUniqueId());
-                    newEntity.sendPassengerPacket(viewer);
+                    plugin.showTagToViewer(newEntity, viewer);
                 }
             }
         }.runTask(NameTags.getInstance());

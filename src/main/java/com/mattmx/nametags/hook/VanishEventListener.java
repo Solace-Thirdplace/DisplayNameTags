@@ -55,19 +55,13 @@ public class VanishEventListener implements Listener {
       boolean showSelf = plugin.getConfig().getBoolean("show-self", false);
 
       for (Player viewer : Bukkit.getOnlinePlayers()) {
-        boolean isSelfHidden = viewer.equals(vanishedPlayer) && !showSelf;
-        boolean canSeeVanishedPlayer = VanishHook.canSee(viewer, vanishedPlayer);
-
-        if (!isSelfHidden && canSeeVanishedPlayer) {
+        boolean shouldHide = (viewer.equals(vanishedPlayer) && !showSelf)
+            || !plugin.canViewerSeeNametag(viewer, vanishedTag);
+        if (!shouldHide) {
           continue;
         }
 
-        vanishedTag.getPassenger().removeViewer(viewer.getUniqueId());
-
-        // Explicitly send destroy packet to avoid stale nametags on clients.
-        WrapperPlayServerDestroyEntities destroyPacket = new WrapperPlayServerDestroyEntities(
-            vanishedTag.getPassenger().getEntityId());
-        PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, destroyPacket);
+        plugin.hideTagFromViewer(vanishedTag, viewer);
       }
     });
   }
@@ -97,13 +91,10 @@ public class VanishEventListener implements Listener {
         continue;
       if (!viewer.getWorld().equals(shownPlayer.getWorld()))
         continue;
+      if (!plugin.canViewerSeeNametag(viewer, shownTag))
+        continue;
 
-      // After this event completes, viewers will be able to see the player
-      // Re-add them as viewers of the nametag
-      shownTag.updateLocation();
-      shownTag.getPassenger().removeViewer(viewer.getUniqueId());
-      shownTag.getPassenger().addViewer(viewer.getUniqueId());
-      shownTag.sendPassengerPacket(viewer);
+      plugin.showTagToViewer(shownTag, viewer);
     }
   }
 }

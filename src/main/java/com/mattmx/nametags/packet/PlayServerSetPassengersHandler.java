@@ -4,7 +4,6 @@ import com.github.retrooper.packetevents.event.PacketSendEvent;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerSetPassengers;
 import com.mattmx.nametags.NameTags;
 import com.mattmx.nametags.entity.NameTagEntity;
-import com.mattmx.nametags.hook.VanishHook;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
@@ -27,18 +26,9 @@ public class PlayServerSetPassengersHandler {
             return;
         }
 
-        // Don't inject nametag if the entity is invisible (e.g., invisibility potion)
-        // unless the viewer has debug view enabled
-        if (nameTagEntity.isInvisible() && !plugin.getEntityManager().hasDebugView(event.getUser().getUUID())) {
+        Player viewer = Bukkit.getPlayer(event.getUser().getUUID());
+        if (viewer == null || !plugin.canViewerSeeNametag(viewer, nameTagEntity)) {
             return;
-        }
-
-        // Don't inject nametag passenger if the owner is vanished from the viewer
-        if (nameTagEntity.getBukkitEntity() instanceof Player target) {
-            Player viewer = Bukkit.getPlayer(event.getUser().getUUID());
-            if (viewer != null && !VanishHook.canSee(viewer, target)) {
-                return;
-            }
         }
 
         // If the packet doesn't already contain our entity

@@ -8,6 +8,7 @@ depend:
   - packetevents
 
 softdepend:
+  - ExyliaEvents
   - PlaceholderAPI
   - TAB
   - SkinsRestorer

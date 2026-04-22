@@ -69,19 +69,11 @@ public class NameTagEntity {
                     continue;
                 }
 
-                // Vanish check — only meaningful when the entity itself is a player
-                if (this.bukkitEntity instanceof Player target
-                        && !VanishHook.canSee(viewer, target)) {
+                if (!plugin.canViewerSeeNametag(viewer, this)) {
                     continue;
                 }
 
-                // Don't reveal an invisible entity's nametag unless the viewer has debug view
-                if (isInvis && !plugin.getEntityManager().hasDebugView(viewer.getUniqueId())) {
-                    continue;
-                }
-
-                this.passenger.addViewer(viewer.getUniqueId());
-                sendPassengerPacket(viewer);
+                plugin.showTagToViewer(this, viewer);
             }
         });
     }
