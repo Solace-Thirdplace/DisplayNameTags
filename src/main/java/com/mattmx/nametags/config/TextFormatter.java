@@ -132,6 +132,18 @@ public enum TextFormatter {
         return formatter.apply(line);
     }
 
+    /**
+     * Suffix to append after each PlaceholderAPI expansion so legacy decorations
+     * (bold, italic, underline, colors) from nicknames do not leak into static
+     * template text that follows the placeholder.
+     */
+    public @NotNull String placeholderExpansionResetSuffix() {
+        return switch (this) {
+            case MINI_MESSAGE -> "<reset>";
+            case LEGACY, SMART -> String.valueOf(NameTags.LEGACY_CHAR) + "r";
+        };
+    }
+
     public static @NotNull Optional<TextFormatter> getById(@NotNull String identifier) {
         return Arrays.stream(values()).filter((f) -> f.identifier.equalsIgnoreCase(identifier)).findFirst();
     }
