@@ -8,11 +8,20 @@ import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class PapiHook {
     private static final @NotNull Pattern PLACEHOLDER_REGEX = Pattern.compile("%(?!rel_)[^%]+%");
     private static final @NotNull Pattern RELATIVE_PLACEHOLDER_REGEX = Pattern.compile("%[^%]+%");
+    /**
+     * Non-relational placeholders only; {@code %rel_...%} is left for
+     * {@link #setRelationalPlaceholders} on outgoing packets.
+     */
+    private static final @NotNull Pattern NON_RELATIVE_PLACEHOLDER = Pattern.compile(
+        "%(?!rel_)[^%]+%",
+        Pattern.CASE_INSENSITIVE
+    );
 
     public static boolean isPapi() {
         return Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null;
@@ -21,11 +30,18 @@ public class PapiHook {
     public static String setPlaceholders(Player one, String text) {
         if (!isPapi()) return text;
 
-        String formatted = text;
-
-        formatted = PlaceholderAPI.setPlaceholders(one, formatted);
-
-        return formatted;
+        Matcher matcher = NON_RELATIVE_PLACEHOLDER.matcher(text);
+        String resetSuffix = NameTags.getInstance().getFormatter().placeholderExpansionResetSuffix();
+        StringBuffer out = new StringBuffer();
+        while (matcher.find()) {
+            String expanded = PlaceholderAPI.setPlaceholders(one, matcher.group());
+            matcher.appendReplacement(out, Matcher.quoteReplacement(expanded + resetSuffix));
+        }
+        if (out.length() == 0) {
+            return text;
+        }
+        matcher.appendTail(out);
+        return out.toString();
     }
 
     public static Component setPlaceholders(Player one, Component text) {
@@ -50,7 +66,8 @@ public class PapiHook {
             .replacement((match, ctx) -> {
                 String matchedText = match.group();
                 String parsed = PlaceholderAPI.setRelationalPlaceholders(one, two, matchedText);
-                return NameTags.getInstance().getFormatter().format(parsed);
+                String resetSuffix = NameTags.getInstance().getFormatter().placeholderExpansionResetSuffix();
+                return NameTags.getInstance().getFormatter().format(parsed + resetSuffix);
             })
             .build()
         );
