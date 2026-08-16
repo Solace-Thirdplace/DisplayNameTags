@@ -12,6 +12,26 @@ defaults:
   # Do not go lower than 50ms (1 tick) or clients may be kicked.
   refresh-every: 500
   # Lines of text to display.
+  #
+  # Conditional segments:
+  # Wrap part of a line in <ifplugin:PluginName>...</ifplugin> and it will only
+  # be rendered on servers where that plugin is installed. On servers without it
+  # the wrapper AND everything inside it are removed before placeholders are
+  # parsed, so you never get raw '%some_placeholder%' text showing up.
+  # This lets one shared config be used across a whole network. e.g
+  #
+  #   text:
+  #     - "&b%player_ping%ms &7| &f&e%objective_score_{Deaths}%<ifplugin:PvPToggle> &7| &f%pvptoggle_icon%</ifplugin>"
+  #
+  # On a server with PvPToggle this renders the ping, deaths and the pvp icon.
+  # On a server without it, the whole ' | %pvptoggle_icon%' segment disappears.
+  #
+  # Notes:
+  # - The plugin name is the name it registers with the server (as shown by
+  #   /plugins), and it only has to be installed, not necessarily enabled.
+  # - You can use several conditionals in one line, but they cannot be nested.
+  # - Anything malformed (missing closing tag, nested tags, empty name) is left
+  #   in the text exactly as written, so mistakes are obvious in game.
   text:
     - "<white>%player_name%</white>"
     - "<blue>%player_ping%ms</blue>"

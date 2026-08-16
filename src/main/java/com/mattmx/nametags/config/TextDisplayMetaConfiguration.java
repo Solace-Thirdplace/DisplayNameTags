@@ -189,7 +189,11 @@ public class TextDisplayMetaConfiguration {
     }
 
     private static Component convertToComponent(Player self, String line) {
-        String formatted = line;
+        // Resolve <ifplugin:Name>...</ifplugin> segments first, so that content depending
+        // on a plugin that isn't installed never reaches placeholder expansion or the
+        // formatter. This is the single point every configured line passes through, so it
+        // applies to the defaults section, group overrides and all formatters alike.
+        String formatted = PluginConditionals.apply(line);
 
         formatted = PapiHook.setPlaceholders(self, formatted);
 

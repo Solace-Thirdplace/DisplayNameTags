@@ -5,6 +5,7 @@ import com.github.retrooper.packetevents.PacketEventsAPI;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerDestroyEntities;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.mattmx.nametags.config.ConfigDefaultsListener;
+import com.mattmx.nametags.config.PluginConditionals;
 import com.mattmx.nametags.config.TextFormatter;
 import com.mattmx.nametags.entity.NameTagEntity;
 import com.mattmx.nametags.entity.NameTagEntityManager;
@@ -116,6 +117,10 @@ public class NameTags extends JavaPlugin {
     @Override
     public void reloadConfig() {
         super.reloadConfig();
+
+        // Plugin presence is cached for the render path; drop it on reload so a lookup
+        // made before another plugin had loaded cannot stick around.
+        PluginConditionals.clearCache();
 
         ConfigurationSection defaults = getConfig().getConfigurationSection("defaults");
         if (defaults != null && defaults.getBoolean("enabled")) {

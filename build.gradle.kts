@@ -46,6 +46,9 @@ dependencies {
     implementation(libs.bstats)
 
     testImplementation(libs.junit.jupiter)
+    // Gradle 8.x ships an older platform launcher than junit-jupiter 5.13 expects;
+    // pinning it here keeps the engine and launcher aligned.
+    testRuntimeOnly(libs.junit.platform.launcher)
 }
 
 tasks {
