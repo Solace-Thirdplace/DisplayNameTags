@@ -9,6 +9,7 @@ import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerEn
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerRemoveEntityEffect;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerSetPassengers;
 import com.mattmx.nametags.entity.NameTagEntity;
+import com.mattmx.nametags.entity.SpectatorHead;
 import com.mattmx.nametags.packet.PlayServerEntityMetaDataHandler;
 import com.mattmx.nametags.packet.PlayServerSetPassengersHandler;
 import com.mattmx.nametags.packet.PlayServerSpawnEntityHandler;
@@ -41,6 +42,10 @@ public class OutgoingPacketListener extends PacketListenerAbstract {
                         continue;
 
                     nameTagEntity.getPassenger().removeViewer(event.getUser());
+                    SpectatorHead head = nameTagEntity.getStandin();
+                    if (head != null) {
+                        head.removeViewer(event.getUser().getUUID());
+                    }
                 }
             }
             case PacketType.Play.Server.ENTITY_EFFECT -> {

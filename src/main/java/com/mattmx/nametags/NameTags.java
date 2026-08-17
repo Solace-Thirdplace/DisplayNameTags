@@ -9,6 +9,7 @@ import com.mattmx.nametags.config.PluginConditionals;
 import com.mattmx.nametags.config.TextFormatter;
 import com.mattmx.nametags.entity.NameTagEntity;
 import com.mattmx.nametags.entity.NameTagEntityManager;
+import com.mattmx.nametags.entity.SpectatorHead;
 import com.mattmx.nametags.hook.NeznamyTABHook;
 import com.mattmx.nametags.hook.SkinRestorerHook;
 import com.mattmx.nametags.hook.VanishEventListener;
@@ -222,8 +223,27 @@ public class NameTags extends JavaPlugin {
         return debugView || visibilityProvider.canSee(viewer, target);
     }
 
+    public boolean isSpectatorVisibleEnabled() {
+        return getConfig().getBoolean("spectator-visible.enabled", false);
+    }
+
+    public int spectatorTeleportDuration() {
+        return getConfig().getInt("spectator-visible.teleport-duration", 1);
+    }
+
     public void showTagToViewer(@NotNull NameTagEntity tag, @NotNull Player viewer) {
         tag.updateLocation();
+        if (tag.shouldUseStandinFor(viewer)) {
+            SpectatorHead head = tag.ensureStandin();
+            if (head != null) {
+                head.addViewer(viewer.getUniqueId());
+            }
+        } else {
+            SpectatorHead head = tag.getStandin();
+            if (head != null && head.hasViewer(viewer.getUniqueId())) {
+                head.removeViewer(viewer.getUniqueId());
+            }
+        }
         tag.getPassenger().removeViewer(viewer.getUniqueId());
         tag.getPassenger().addViewer(viewer.getUniqueId());
         tag.sendPassengerPacket(viewer);
@@ -231,6 +251,10 @@ public class NameTags extends JavaPlugin {
 
     public void hideTagFromViewer(@NotNull NameTagEntity tag, @NotNull Player viewer) {
         tag.getPassenger().removeViewer(viewer.getUniqueId());
+        SpectatorHead head = tag.getStandin();
+        if (head != null && head.hasViewer(viewer.getUniqueId())) {
+            head.removeViewer(viewer.getUniqueId());
+        }
         PacketEvents.getAPI().getPlayerManager().sendPacket(viewer, new WrapperPlayServerDestroyEntities(tag.getPassenger().getEntityId()));
     }
 

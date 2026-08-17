@@ -31,6 +31,14 @@ public class PlayServerSetPassengersHandler {
             return;
         }
 
+        // Survival viewers cannot see a spectator (or its passengers). Parent
+        // the tag to the stand-in head instead of injecting onto the player.
+        if (nameTagEntity.shouldUseStandinFor(viewer)) {
+            event.getTasksAfterSend().add(() -> plugin.getExecutor().execute(() ->
+                    plugin.showTagToViewer(nameTagEntity, viewer)));
+            return;
+        }
+
         // If the packet doesn't already contain our entity
         boolean containsNameTagPassenger = false;
         for (final int passengerId : packet.getPassengers()) {

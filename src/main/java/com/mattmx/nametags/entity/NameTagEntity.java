@@ -17,6 +17,7 @@ import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.potion.PotionEffectType;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Arrays;
 import java.util.function.Consumer;
@@ -25,6 +26,7 @@ public class NameTagEntity {
     private final @NotNull TraitHolder traits = new TraitHolder(this);
     private final @NotNull Entity bukkitEntity;
     private final @NotNull WrapperEntity passenger;
+    private @Nullable SpectatorHead standin;
     private float cachedViewRange = -1f;
 
     public NameTagEntity(@NotNull Entity entity) {
@@ -120,10 +122,24 @@ public class NameTagEntity {
     public void sendPassengerPacket(Player target) {
         PacketEvents.getAPI()
                 .getPlayerManager()
-                .sendPacket(target, getPassengersPacket());
+                .sendPacket(target, getPassengersPacket(target));
     }
 
     public PacketWrapper<?> getPassengersPacket() {
+        return getPassengersPacket(null);
+    }
+
+    public PacketWrapper<?> getPassengersPacket(@Nullable Player viewer) {
+        if (viewer != null && shouldUseStandinFor(viewer)) {
+            SpectatorHead head = ensureStandin();
+            if (head != null) {
+                int[] passengers = new int[]{getPassenger().getEntityId()};
+                NameTags.getInstance().getEntityManager()
+                        .setLastSentPassengers(head.getEntityId(), passengers);
+                return new WrapperPlayServerSetPassengers(head.getEntityId(), passengers);
+            }
+        }
+
         int[] previousPackets = NameTags.getInstance()
                 .getEntityManager()
                 .getLastSentPassengers(getBukkitEntity().getEntityId())
@@ -140,6 +156,51 @@ public class NameTagEntity {
                 });
 
         return new WrapperPlayServerSetPassengers(bukkitEntity.getEntityId(), previousPackets);
+    }
+
+    public boolean shouldUseStandinFor(@NotNull Player viewer) {
+        Player owner = bukkitEntity instanceof Player player ? player : null;
+        return SpectatorStandinPolicy.showStandinTo(
+                NameTags.getInstance().isSpectatorVisibleEnabled(), owner, viewer);
+    }
+
+    public @Nullable SpectatorHead ensureStandin() {
+        if (!(bukkitEntity instanceof Player owner) || owner.getGameMode() != org.bukkit.GameMode.SPECTATOR) {
+            destroyStandin();
+            return null;
+        }
+        if (!NameTags.getInstance().isSpectatorVisibleEnabled()) {
+            destroyStandin();
+            return null;
+        }
+        if (standin == null) {
+            standin = new SpectatorHead(owner, NameTags.getInstance().spectatorTeleportDuration());
+        }
+        return standin;
+    }
+
+    public void syncStandin() {
+        if (standin == null) {
+            return;
+        }
+        if (!(bukkitEntity instanceof Player owner) || owner.getGameMode() != org.bukkit.GameMode.SPECTATOR) {
+            destroyStandin();
+            return;
+        }
+        standin.updateLocation(owner);
+    }
+
+    public void destroyStandin() {
+        if (standin == null) {
+            return;
+        }
+        NameTags.getInstance().getEntityManager().removeLastSentPassengersCache(standin.getEntityId());
+        standin.destroy();
+        standin = null;
+    }
+
+    public @Nullable SpectatorHead getStandin() {
+        return standin;
     }
 
     public @NotNull Entity getBukkitEntity() {
@@ -160,11 +221,13 @@ public class NameTagEntity {
         location.setPitch(0f);
 
         this.passenger.setLocation(location);
+        syncStandin();
 
         return location;
     }
 
     public void destroy() {
+        destroyStandin();
         this.passenger.despawn();
         this.getTraits().destroy();
     }

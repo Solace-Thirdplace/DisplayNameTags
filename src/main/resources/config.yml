@@ -120,3 +120,12 @@ formatter: minimessage
 extra:
   # Should the name-tag be see-through if the player is glowing?
   glowing-feature: true
+
+# When a tracked player is in spectator, Survival/Creative viewers cannot see
+# them (or a nametag riding them). With this on, a packet player-head follows
+# the spectator and the nametag rides that head instead.
+# Leave off on the main network; turn it on for Arcadia realms.
+spectator-visible:
+  enabled: false
+  # Client interpolation ticks between position updates. 1 matches a move packet.
+  teleport-duration: 1

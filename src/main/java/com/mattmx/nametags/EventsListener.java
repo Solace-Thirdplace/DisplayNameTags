@@ -9,6 +9,7 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityPotionEffectEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.GameMode;
 import org.bukkit.event.player.*;
 import org.bukkit.potion.PotionEffectType;
 import org.jetbrains.annotations.NotNull;
@@ -138,6 +139,48 @@ public class EventsListener implements Listener {
                 nameTagEntity.sendPassengerPacket(event.getPlayer());
             });
         }
+    }
+
+    @EventHandler(ignoreCancelled = true, priority = EventPriority.MONITOR)
+    public void onPlayerMove(@NotNull PlayerMoveEvent event) {
+        if (!plugin.isSpectatorVisibleEnabled()) {
+            return;
+        }
+        if (event.getPlayer().getGameMode() != GameMode.SPECTATOR) {
+            return;
+        }
+        NameTagEntity nameTagEntity = plugin.getEntityManager().getNameTagEntity(event.getPlayer());
+        if (nameTagEntity == null) {
+            return;
+        }
+        nameTagEntity.syncStandin();
+    }
+
+    @EventHandler(ignoreCancelled = true, priority = EventPriority.MONITOR)
+    public void onGameModeChange(@NotNull PlayerGameModeChangeEvent event) {
+        if (!plugin.isSpectatorVisibleEnabled()) {
+            return;
+        }
+        NameTagEntity nameTagEntity = plugin.getEntityManager().getNameTagEntity(event.getPlayer());
+        if (nameTagEntity == null) {
+            return;
+        }
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (event.getPlayer().getGameMode() != GameMode.SPECTATOR) {
+                nameTagEntity.destroyStandin();
+            }
+            nameTagEntity.updateLocation();
+            for (Player tracker : event.getPlayer().getTrackedBy()) {
+                if (tracker.equals(event.getPlayer()) && !plugin.getConfig().getBoolean("show-self", false)) {
+                    continue;
+                }
+                if (plugin.canViewerSeeNametag(tracker, nameTagEntity)) {
+                    plugin.showTagToViewer(nameTagEntity, tracker);
+                } else {
+                    plugin.hideTagFromViewer(nameTagEntity, tracker);
+                }
+            }
+        });
     }
 
     @EventHandler(ignoreCancelled = true)
