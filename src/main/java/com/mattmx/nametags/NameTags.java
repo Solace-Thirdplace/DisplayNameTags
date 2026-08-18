@@ -7,6 +7,7 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.mattmx.nametags.config.ConfigDefaultsListener;
 import com.mattmx.nametags.config.PluginConditionals;
 import com.mattmx.nametags.config.TextFormatter;
+import com.mattmx.nametags.hearts.HeartBar;
 import com.mattmx.nametags.entity.NameTagEntity;
 import com.mattmx.nametags.entity.NameTagEntityManager;
 import com.mattmx.nametags.entity.SpectatorHead;
@@ -49,6 +50,7 @@ public class NameTags extends JavaPlugin {
     private final HashMap<String, ConfigurationSection> groups = new HashMap<>();
     private @Nullable Executor executor = null;
     private @NotNull TextFormatter formatter = TextFormatter.MINI_MESSAGE;
+    private @NotNull HeartBar.Settings heartBarSettings = HeartBar.Settings.DEFAULTS;
     private @NotNull NameTagVisibilityProvider visibilityProvider = PermissiveNameTagVisibilityProvider.INSTANCE;
     private NameTagEntityManager entityManager;
     private EventsListener eventsListener;
@@ -138,6 +140,7 @@ public class NameTags extends JavaPlugin {
         String textFormatterIdentifier = getConfig().getString("formatter", "minimessage");
         formatter = TextFormatter.getById(textFormatterIdentifier)
                 .orElse(TextFormatter.MINI_MESSAGE);
+        heartBarSettings = HeartBar.Settings.fromConfig(getConfig());
 
         getLogger().info("Using " + formatter.name() + " as text formatter.");
 
@@ -264,6 +267,10 @@ public class NameTags extends JavaPlugin {
 
     public @NotNull TextFormatter getFormatter() {
         return this.formatter;
+    }
+
+    public @NotNull HeartBar.Settings heartBarSettings() {
+        return this.heartBarSettings;
     }
 
     /**

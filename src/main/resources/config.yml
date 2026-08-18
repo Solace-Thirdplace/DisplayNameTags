@@ -2,6 +2,24 @@ options:
   threads: 2
   relative-placeholders-support: true
 
+# Native heart bar used by the <hearts> token in a text line.
+# Slot count follows the player's max-health attribute (not a fixed 10).
+# Above 20 HP a second row of up to 10 hearts is added above the first;
+# max health above 40 is not shown. Empty hearts fill missing current HP
+# within that actual max, they do not pad up to 10 when max is lower.
+hearts:
+  hearts-per-row: 10
+  max-rows: 2
+  show-empty: true
+  icons:
+    full: ❤
+    half: ♥
+    empty: ❤
+  colors:
+    full: '&4'
+    half: '&c'
+    empty: '&7'
+
 # Base default options applied first
 defaults:
   # If not enabled then plugin simulates vanilla name tags
@@ -32,8 +50,14 @@ defaults:
   # - You can use several conditionals in one line, but they cannot be nested.
   # - Anything malformed (missing closing tag, nested tags, empty name) is left
   #   in the text exactly as written, so mistakes are obvious in game.
+  #
+  # Hearts:
+  # A line that is only <hearts> is replaced with one or two heart-bar rows
+  # (see the top-level hearts: section). Put it on its own line. If you embed
+  # <hearts> in other text it becomes a single compact bar instead.
   text:
     - "<white>%player_name%</white>"
+    - "<hearts>"
     - "<blue>%player_ping%ms</blue>"
   # Background colour of the billboard.
   # You can use AARRGGBB hex codes e.g '#FF00FF00'

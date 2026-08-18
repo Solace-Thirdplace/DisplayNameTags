@@ -2,6 +2,7 @@ package com.mattmx.nametags.config;
 
 import com.github.retrooper.packetevents.util.Vector3f;
 import com.mattmx.nametags.NameTags;
+import com.mattmx.nametags.hearts.HeartBar;
 import com.mattmx.nametags.hook.PapiHook;
 import me.tofaa.entitylib.meta.display.AbstractDisplayMeta;
 import me.tofaa.entitylib.meta.display.TextDisplayMeta;
@@ -16,8 +17,10 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.regex.Matcher;
 import java.util.stream.Stream;
 
 public class TextDisplayMetaConfiguration {
@@ -28,7 +31,7 @@ public class TextDisplayMetaConfiguration {
             return false;
         Stream<Component> stream = section.getStringList("text")
                 .stream()
-                .map((line) -> convertToComponent(self, line));
+                .flatMap((line) -> expandLine(self, line));
 
         if (NameTags.getInstance().getConfig().getBoolean("defaults.remove-empty-lines", false)) {
             stream = stream.filter(TextComponent.IS_NOT_EMPTY);
@@ -188,14 +191,41 @@ public class TextDisplayMetaConfiguration {
         String pitch = section.getString("pitch");
     }
 
-    private static Component convertToComponent(Player self, String line) {
-        // Resolve <ifplugin:Name>...</ifplugin> segments first, so that content depending
-        // on a plugin that isn't installed never reaches placeholder expansion or the
-        // formatter. This is the single point every configured line passes through, so it
-        // applies to the defaults section, group overrides and all formatters alike.
-        String formatted = PluginConditionals.apply(line);
+    /**
+     * Resolves {@code <ifplugin>} wrappers, then either expands a standalone
+     * {@code <hearts>} line into one or two heart-bar components or runs the
+     * normal placeholder + formatter path. Inline {@code <hearts>} (mixed with
+     * other text) is replaced with a single compact bar so the token never
+     * leaks through as literal text.
+     */
+    private static Stream<Component> expandLine(@NotNull Player self, @NotNull String line) {
+        String resolved = PluginConditionals.apply(line);
 
-        formatted = PapiHook.setPlaceholders(self, formatted);
+        if (HeartBar.isStandaloneToken(resolved)) {
+            List<String> rows = HeartBar.renderRows(self, NameTags.getInstance().heartBarSettings());
+            if (rows.isEmpty()) {
+                return Stream.of(Component.empty());
+            }
+            return rows.stream().map(TextDisplayMetaConfiguration::formatHearts);
+        }
+
+        if (HeartBar.TOKEN_PATTERN.matcher(resolved).find()) {
+            String compact = HeartBar.renderCompact(self, NameTags.getInstance().heartBarSettings());
+            resolved = HeartBar.TOKEN_PATTERN.matcher(resolved).replaceAll(Matcher.quoteReplacement(compact));
+        }
+
+        return Stream.of(convertToComponent(self, resolved));
+    }
+
+    private static @NotNull Component formatHearts(@NotNull String row) {
+        // Heart colours in config are legacy (&4 / &c / &7), matching the old
+        // healthbar expansion. Always run them through SMART so they work even
+        // when the rest of the nametag uses MiniMessage.
+        return TextFormatter.SMART.format(row);
+    }
+
+    private static Component convertToComponent(Player self, String line) {
+        String formatted = PapiHook.setPlaceholders(self, line);
 
         return NameTags.getInstance()
                 .getFormatter()
