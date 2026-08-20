@@ -13,14 +13,19 @@ import com.mattmx.nametags.NameTags;
 import com.mattmx.nametags.entity.NameTagEntity;
 import com.mattmx.nametags.hook.PapiHook;
 import com.mattmx.nametags.utils.ComponentUtils;
+import io.github.retrooper.packetevents.util.SpigotConversionUtil;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.TextComponent;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Tameable;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+
+
 /**
- * Responsible for two things:
+ * Responsible for three things:
  * <p>
  * 1. Modifying the passenger entity Y offset, since Mojang changed the
  * entity passenger origin by a small amount, which results in the name
@@ -32,6 +37,9 @@ import org.jetbrains.annotations.Nullable;
  * <p>
  * 2. Apply relational placeholders (off the netty thread) if there are
  * any.
+ * <p>
+ * 3. Strip the owner UUID from tameable animals so TAB's
+ * {@code nametagVisibility=never} team does not hide named pets.
  */
 public class PlayServerEntityMetaDataHandler {
     private static final byte TEXT_DISPLAY_TEXT_INDEX = 23;
@@ -53,6 +61,8 @@ public class PlayServerEntityMetaDataHandler {
 
         final PacketSendEvent eventClone = event.clone();
         final WrapperPlayServerEntityMetadata packet0 = new WrapperPlayServerEntityMetadata(event);
+
+        hideTameableOwner(event, packet0);
 
         final NameTagEntity nameTagEntity = plugin.getEntityManager().getNameTagEntityByTagEntityId(packet0.getEntityId());
 
@@ -124,6 +134,40 @@ public class PlayServerEntityMetaDataHandler {
                 eventClone.getUser().sendPacketSilently(packet);
             }
         });
+    }
+
+    /**
+     * TAB hides vanilla player nametags with a scoreboard team. The client
+     * copies that team onto tamed animals using the owner UUID in metadata,
+     * which makes named pets invisible. Empty the owner field on the wire so
+     * the pet keeps its own nametag; sitting/collar/ownership stay server-side.
+     */
+    private static void hideTameableOwner(
+            @NotNull PacketSendEvent event,
+            @NotNull WrapperPlayServerEntityMetadata packet
+    ) {
+        boolean hasOwnerField = false;
+        for (final EntityData<?> entry : packet.getEntityMetadata()) {
+            if (TameableOwnerHider.isPresentOwnerUuid(entry.getValue())) {
+                hasOwnerField = true;
+                break;
+            }
+        }
+        if (!hasOwnerField) {
+            return;
+        }
+
+        final Player viewer = event.getPlayer();
+        if (viewer == null) {
+            return;
+        }
+
+        final Entity entity = SpigotConversionUtil.getEntityById(viewer.getWorld(), packet.getEntityId());
+        if (!(entity instanceof Tameable)) {
+            return;
+        }
+
+        TameableOwnerHider.clearPresentOwner(packet.getEntityMetadata());
     }
 
 }
