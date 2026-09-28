@@ -49,40 +49,20 @@ public class PlayServerSetPassengersHandler {
 
         // TODO(Matt)?: Should we process async and then send another passenger packet
         // afterwards?
-        int[] passengers = packet.getPassengers();
-        boolean changed = false;
-
         if (!containsNameTagPassenger) {
+
             // Add our entity
-            passengers = Arrays.copyOf(passengers, passengers.length + 1);
+            int[] passengers = Arrays.copyOf(packet.getPassengers(), packet.getPassengers().length + 1);
             passengers[passengers.length - 1] = nameTagEntity.getPassenger().getEntityId();
-            changed = true;
+
+            packet.setPassengers(passengers);
+
+            NameTags.getInstance()
+                    .getEntityManager()
+                    .setLastSentPassengers(packet.getEntityId(), passengers);
+
+            event.markForReEncode(true);
         }
-
-        // An active speech bubble is a second passenger on the same player, so it has to ride
-        // along in the same packet or the client will unmount it. Only for a viewer that has
-        // already been sent the bubble.
-        int[] withBubble = plugin.getBubbleManager()
-                .withBubble(
-                        nameTagEntity.getBukkitEntity().getUniqueId(),
-                        viewer.getUniqueId(),
-                        passengers);
-
-        if (withBubble != passengers) {
-            passengers = withBubble;
-            changed = true;
-        }
-
-        if (!changed) {
-            return;
-        }
-
-        packet.setPassengers(passengers);
-
-        plugin.getEntityManager()
-                .setLastSentPassengers(packet.getEntityId(), passengers);
-
-        event.markForReEncode(true);
     }
 
 }

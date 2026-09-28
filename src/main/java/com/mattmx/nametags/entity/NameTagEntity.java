@@ -143,35 +143,19 @@ public class NameTagEntity {
         int[] previousPackets = NameTags.getInstance()
                 .getEntityManager()
                 .getLastSentPassengers(getBukkitEntity().getEntityId())
-                .orElseGet(this::currentPassengerIds);
+                .orElseGet(() -> {
+                    int[] bukkitPassengers = this.bukkitEntity.getPassengers()
+                            .stream()
+                            .mapToInt(Entity::getEntityId)
+                            .toArray();
 
-        // A speech bubble rides alongside the tag, so it has to be in the same packet, but only
-        // for a viewer that has already been sent the bubble.
-        previousPackets = NameTags.getInstance()
-                .getBubbleManager()
-                .withBubble(
-                        bukkitEntity.getUniqueId(),
-                        viewer == null ? null : viewer.getUniqueId(),
-                        previousPackets);
+                    int[] passengers = Arrays.copyOf(bukkitPassengers, bukkitPassengers.length + 1);
+                    passengers[passengers.length - 1] = getPassenger().getEntityId();
+
+                    return passengers;
+                });
 
         return new WrapperPlayServerSetPassengers(bukkitEntity.getEntityId(), previousPackets);
-    }
-
-    /**
-     * The entity's real passengers plus this nametag, ignoring anything previously sent. Used when
-     * a fresh, authoritative passenger list is needed, such as when a speech bubble is added or
-     * removed. Must be called on the main thread.
-     */
-    public int[] currentPassengerIds() {
-        int[] bukkitPassengers = this.bukkitEntity.getPassengers()
-                .stream()
-                .mapToInt(Entity::getEntityId)
-                .toArray();
-
-        int[] passengers = Arrays.copyOf(bukkitPassengers, bukkitPassengers.length + 1);
-        passengers[passengers.length - 1] = getPassenger().getEntityId();
-
-        return passengers;
     }
 
     public boolean shouldUseStandinFor(@NotNull Player viewer) {
