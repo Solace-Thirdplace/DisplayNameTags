@@ -7,6 +7,7 @@ import com.github.retrooper.packetevents.protocol.player.User;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerSpawnEntity;
 import com.mattmx.nametags.NameTags;
 import com.mattmx.nametags.entity.NameTagEntity;
+import com.mattmx.nametags.utils.Schedulers;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
@@ -35,20 +36,25 @@ public class PlayServerSpawnEntityHandler {
         if (nameTagEntity == null) {
 
             // Entity doesn't have a nametag yet. For players this can happen when the
-            // SPAWN_ENTITY packet races the PlayerJoinEvent, or after a Caffeine cache
-            // eviction window. Schedule a main-thread retry that will create the tag
-            // if it still doesn't exist.
+            // SPAWN_ENTITY packet races the PlayerJoinEvent. Schedule a retry in a
+            // second that will create the tag if it still doesn't exist, on the thread
+            // that owns the player (the main thread on Paper).
             if (packet.getEntityType() == EntityTypes.PLAYER) {
-                Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                Bukkit.getGlobalRegionScheduler().runDelayed(plugin, (task) -> {
                     final Player player = Bukkit.getPlayer(packetUUID);
                     if (player == null || !player.isOnline())
                         return;
 
-                    final NameTagEntity resolved = plugin.getEntityManager()
-                            .getOrCreateNameTagEntity(player);
-                    resolved.updateVisibility();
+                    Schedulers.runOn(plugin, player, () -> {
+                        if (!player.isOnline())
+                            return;
 
-                    plugin.getExecutor().execute(() -> attachPassengerToEntity(resolved, user));
+                        final NameTagEntity resolved = plugin.getEntityManager()
+                                .getOrCreateNameTagEntity(player);
+                        resolved.updateVisibility();
+
+                        plugin.getExecutor().execute(() -> attachPassengerToEntity(resolved, user));
+                    });
                 }, 20L);
             }
 

@@ -1,6 +1,7 @@
 package com.mattmx.nametags;
 
 import com.mattmx.nametags.entity.NameTagEntity;
+import com.mattmx.nametags.utils.Schedulers;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -53,48 +54,12 @@ public class NameTagsCommand implements CommandExecutor, TabCompleter {
                 return true;
             }
 
-            boolean nowDisabled = plugin.getEntityManager().toggleNameTag(target.getUniqueId());
-            NameTagEntity tag = plugin.getEntityManager().getNameTagEntity(target);
-
-            if (tag != null) {
-                if (nowDisabled) {
-                    // Hide the nametag from all viewers
-                    tag.getPassenger().despawn();
-                } else {
-                    // Show the nametag again
-                    tag.getPassenger().spawn(tag.updateLocation());
-                    tag.updateVisibility();
-
-                    // If the player is invisible (potion) or vanished, don't add viewers yet
-                    // The nametag will be shown automatically when they become visible
-                    // via the potion effect listener or when vanish is toggled off
-                    if (tag.isInvisible()) {
-                        sender.sendMessage(Component
-                                .text(target.getName() + "'s nametag is now enabled (but hidden due to invisibility).")
-                                .color(NamedTextColor.YELLOW));
-                        return true;
-                    }
-
-                    // Re-add viewers and send passenger packets
-                    for (final Player viewer : Bukkit.getOnlinePlayers()) {
-                        if (viewer.equals(target) && !plugin.getConfig().getBoolean("show-self", false)) {
-                            continue;
-                        }
-                        if (!viewer.getWorld().equals(target.getWorld())) {
-                            continue;
-                        }
-                        if (!plugin.canViewerSeeNametag(viewer, tag)) {
-                            continue;
-                        }
-                        plugin.showTagToViewer(tag, viewer);
-                    }
-                    tag.getPassenger().refresh();
-                }
+            // The target may be ticked by another region thread than the sender (Folia);
+            // do the tag work on the target's own thread. Immediate when already there.
+            final boolean scheduled = Schedulers.runOn(plugin, target, () -> toggle(sender, target));
+            if (!scheduled) {
+                sender.sendMessage(Component.text("Player not found.").color(NamedTextColor.RED));
             }
-
-            sender.sendMessage(Component
-                    .text(target.getName() + "'s nametag is now " + (nowDisabled ? "disabled" : "enabled") + ".")
-                    .color(nowDisabled ? NamedTextColor.RED : NamedTextColor.GREEN));
             return true;
         } else if (args[0].equalsIgnoreCase("debugview") || args[0].equalsIgnoreCase("seeall")) {
             if (!sender.hasPermission("nametags.admin.debugview")) {
@@ -164,6 +129,51 @@ public class NameTagsCommand implements CommandExecutor, TabCompleter {
         return false;
     }
 
+    private void toggle(@NotNull CommandSender sender, @NotNull Player target) {
+        boolean nowDisabled = plugin.getEntityManager().toggleNameTag(target.getUniqueId());
+        NameTagEntity tag = plugin.getEntityManager().getNameTagEntity(target);
+
+        if (tag != null) {
+            if (nowDisabled) {
+                // Hide the nametag from all viewers
+                tag.getPassenger().despawn();
+            } else {
+                // Show the nametag again
+                tag.getPassenger().spawn(tag.updateLocation());
+                tag.updateVisibility();
+
+                // If the player is invisible (potion) or vanished, don't add viewers yet
+                // The nametag will be shown automatically when they become visible
+                // via the potion effect listener or when vanish is toggled off
+                if (tag.isInvisible()) {
+                    sender.sendMessage(Component
+                            .text(target.getName() + "'s nametag is now enabled (but hidden due to invisibility).")
+                            .color(NamedTextColor.YELLOW));
+                    return;
+                }
+
+                // Re-add viewers and send passenger packets
+                for (final Player viewer : Bukkit.getOnlinePlayers()) {
+                    if (viewer.equals(target) && !plugin.getConfig().getBoolean("show-self", false)) {
+                        continue;
+                    }
+                    if (!viewer.getWorld().equals(target.getWorld())) {
+                        continue;
+                    }
+                    if (!plugin.canViewerSeeNametag(viewer, tag)) {
+                        continue;
+                    }
+                    plugin.showTagToViewer(tag, viewer);
+                }
+                tag.getPassenger().refresh();
+            }
+        }
+
+        sender.sendMessage(Component
+                .text(target.getName() + "'s nametag is now " + (nowDisabled ? "disabled" : "enabled") + ".")
+                .color(nowDisabled ? NamedTextColor.RED : NamedTextColor.GREEN));
+    }
+
     private void reload() {
         for (final Player player : Bukkit.getOnlinePlayers()) {
             final NameTagEntity tag = plugin.getEntityManager().getNameTagEntity(player);
@@ -177,36 +187,41 @@ public class NameTagsCommand implements CommandExecutor, TabCompleter {
 
         final boolean showSelf = plugin.getConfig().getBoolean("show-self", false);
 
+        // Rebuild each player's tag on the thread that owns that player.
         for (final Player player : Bukkit.getOnlinePlayers()) {
-            final NameTagEntity tag = plugin.getEntityManager().removeEntity(player);
-
-            if (tag != null) {
-                tag.destroy();
-            }
-
-            final NameTagEntity newTag = plugin.getEntityManager().getOrCreateNameTagEntity(player);
-
-            // Add all online players in the same world as viewers
-            for (final Player viewer : Bukkit.getOnlinePlayers()) {
-                if (viewer.equals(player) && !showSelf) {
-                    continue; // Skip self unless show-self is enabled
-                }
-
-                if (!viewer.getWorld().equals(player.getWorld())) {
-                    continue; // Skip players in different worlds
-                }
-
-                if (!plugin.canViewerSeeNametag(viewer, newTag)) {
-                    continue;
-                }
-                plugin.showTagToViewer(newTag, viewer);
-            }
-
-            newTag.updateVisibility();
-            // Refresh to send metadata to viewers immediately (fixes invisible nametags
-            // after reload)
-            newTag.getPassenger().refresh();
+            Schedulers.runOn(plugin, player, () -> rebuild(player, showSelf));
         }
+    }
+
+    private void rebuild(@NotNull Player player, boolean showSelf) {
+        final NameTagEntity tag = plugin.getEntityManager().removeEntity(player);
+
+        if (tag != null) {
+            tag.destroy();
+        }
+
+        final NameTagEntity newTag = plugin.getEntityManager().getOrCreateNameTagEntity(player);
+
+        // Add all online players in the same world as viewers
+        for (final Player viewer : Bukkit.getOnlinePlayers()) {
+            if (viewer.equals(player) && !showSelf) {
+                continue; // Skip self unless show-self is enabled
+            }
+
+            if (!viewer.getWorld().equals(player.getWorld())) {
+                continue; // Skip players in different worlds
+            }
+
+            if (!plugin.canViewerSeeNametag(viewer, newTag)) {
+                continue;
+            }
+            plugin.showTagToViewer(newTag, viewer);
+        }
+
+        newTag.updateVisibility();
+        // Refresh to send metadata to viewers immediately (fixes invisible nametags
+        // after reload)
+        newTag.getPassenger().refresh();
     }
 
     @Override

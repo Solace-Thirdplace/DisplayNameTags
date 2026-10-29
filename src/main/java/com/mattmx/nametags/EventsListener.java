@@ -2,6 +2,7 @@ package com.mattmx.nametags;
 
 import com.mattmx.nametags.entity.NameTagEntity;
 import com.mattmx.nametags.entity.trait.SneakTrait;
+import com.mattmx.nametags.utils.Schedulers;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -14,6 +15,7 @@ import org.bukkit.event.player.*;
 import org.bukkit.potion.PotionEffectType;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.Set;
 import java.util.UUID;
 
 public class EventsListener implements Listener {
@@ -81,11 +83,14 @@ public class EventsListener implements Listener {
         plugin.getEntityManager().removeLastSentPassengersCache(event.getPlayer().getEntityId());
 
         // Remove all viewers from old world - they can't see entities in other worlds
-        // The spawn packet handler will add viewers from the new world automatically
+        // The spawn packet handler will add viewers from the new world automatically.
+        // Walks the tag's own viewers instead of the old world's player list, which
+        // belongs to other regions under Folia.
         Player player = event.getPlayer();
-        for (Player oldWorldPlayer : event.getFrom().getPlayers()) {
-            if (!oldWorldPlayer.equals(player)) {
-                nameTagEntity.getPassenger().removeViewer(oldWorldPlayer.getUniqueId());
+        for (UUID viewerId : Set.copyOf(nameTagEntity.getPassenger().getViewers())) {
+            Player viewer = Bukkit.getPlayer(viewerId);
+            if (viewer != null && !viewer.equals(player) && viewer.getWorld().equals(event.getFrom())) {
+                nameTagEntity.getPassenger().removeViewer(viewerId);
             }
         }
 
@@ -130,7 +135,7 @@ public class EventsListener implements Listener {
             if (!playerWorld.equalsIgnoreCase(respawnWorld))
                 return;
 
-            Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            Schedulers.nextTick(plugin, event.getPlayer(), () -> {
                 // Update entity location.
                 nameTagEntity.updateLocation();
                 // Add player back as viewer
@@ -165,7 +170,9 @@ public class EventsListener implements Listener {
         if (nameTagEntity == null) {
             return;
         }
-        Bukkit.getScheduler().runTask(plugin, () -> {
+        // Next tick, on the player's own thread: the new game mode has applied and
+        // getTrackedBy() is read where it is owned.
+        Schedulers.nextTick(plugin, event.getPlayer(), () -> {
             if (event.getPlayer().getGameMode() != GameMode.SPECTATOR) {
                 nameTagEntity.destroyStandin();
             }
@@ -225,8 +232,9 @@ public class EventsListener implements Listener {
         boolean gainingInvisibility = event.getNewEffect() != null
                 && event.getNewEffect().getType().equals(PotionEffectType.INVISIBILITY);
 
-        // Delay the visibility update slightly to ensure the effect has been applied
-        Bukkit.getScheduler().runTaskLaterAsynchronously(plugin, () -> {
+        // Delay the visibility update slightly to ensure the effect has been applied.
+        // Runs on the player's own thread, where the effect is read.
+        Schedulers.later(plugin, player, () -> {
             nameTagEntity.updateVisibility();
 
             // If losing invisibility, we need to re-add viewers since they may have been

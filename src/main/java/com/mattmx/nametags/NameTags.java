@@ -18,6 +18,7 @@ import com.mattmx.nametags.hook.VanishHook;
 import com.mattmx.nametags.visibility.ExyliaEventsVisibilityProvider;
 import com.mattmx.nametags.visibility.NameTagVisibilityProvider;
 import com.mattmx.nametags.visibility.PermissiveNameTagVisibilityProvider;
+import com.mattmx.nametags.utils.Schedulers;
 import com.mattmx.nametags.utils.test.TestPlaceholderExpansion;
 import me.tofaa.entitylib.APIConfig;
 import me.tofaa.entitylib.EntityLib;
@@ -41,14 +42,16 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 public class NameTags extends JavaPlugin {
     public static final int TRANSPARENT = Color.fromARGB(0).asARGB();
     public static final char LEGACY_CHAR = (char) 167;
     private static @Nullable NameTags instance;
     private final HashMap<String, ConfigurationSection> groups = new HashMap<>();
-    private @Nullable Executor executor = null;
+    private @Nullable ExecutorService executor = null;
     private @NotNull TextFormatter formatter = TextFormatter.MINI_MESSAGE;
     private @NotNull HeartBar.Settings heartBarSettings = HeartBar.Settings.DEFAULTS;
     private @NotNull NameTagVisibilityProvider visibilityProvider = PermissiveNameTagVisibilityProvider.INSTANCE;
@@ -67,6 +70,7 @@ public class NameTags extends JavaPlugin {
         instance = this;
 
         entityManager = new NameTagEntityManager();
+        Bukkit.getAsyncScheduler().runAtFixedRate(this, (task) -> entityManager.sweepStaleEntities(), 1L, 1L, TimeUnit.MINUTES);
         eventsListener = new EventsListener(this);
         packetListener = new OutgoingPacketListener(this);
 
@@ -100,7 +104,7 @@ public class NameTags extends JavaPlugin {
 
         Bukkit.getPluginManager().registerEvents(eventsListener, this);
         Bukkit.getPluginManager().registerEvents(new com.mattmx.nametags.packet.TameableInteractionFix(), this);
-        Bukkit.getScheduler().runTaskLater(this, DependencyVersionChecker::checkPacketEventsVersion, 10L);
+        Bukkit.getGlobalRegionScheduler().runDelayed(this, (task) -> DependencyVersionChecker.checkPacketEventsVersion(), 10L);
 
         Objects.requireNonNull(Bukkit.getPluginCommand("nametags")).setExecutor(new NameTagsCommand(this));
 
@@ -108,14 +112,15 @@ public class NameTags extends JavaPlugin {
             new TestPlaceholderExpansion().register();
         }
 
-        // Create nametags for any players already online (e.g., after plugin reload)
+        // Create nametags for any players already online (e.g., after plugin reload),
+        // each on the thread that owns that player.
         for (Player player : Bukkit.getOnlinePlayers()) {
-            entityManager.getOrCreateNameTagEntity(player).updateVisibility();
+            Schedulers.runOn(this, player, () -> entityManager.getOrCreateNameTagEntity(player).updateVisibility());
         }
 
         // Periodic viewer reconciliation — keeps nametag viewers aligned with
         // the current visibility policy and catches missed transitions.
-        Bukkit.getScheduler().runTaskTimer(this, this::reconcileViewers, 20L, 20L);
+        Bukkit.getGlobalRegionScheduler().runAtFixedRate(this, (task) -> reconcileViewers(), 20L, 20L);
     }
 
     @Override
@@ -175,18 +180,34 @@ public class NameTags extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        metrics.shutdown();
-
-        // Destroy all nametag entities to prevent orphaned text displays
-        for (NameTagEntity entity : entityManager.getAllEntities()) {
-            entity.destroy();
+        if (metrics != null) {
+            metrics.shutdown();
         }
 
-        HandlerList.unregisterAll(this.eventsListener);
+        Bukkit.getAsyncScheduler().cancelTasks(this);
+        Bukkit.getGlobalRegionScheduler().cancelTasks(this);
 
-        PacketEvents.getAPI()
-                .getEventManager()
-                .unregisterListener(this.packetListener);
+        // Destroy all nametag entities to prevent orphaned text displays
+        if (entityManager != null) {
+            for (NameTagEntity entity : entityManager.getAllEntities()) {
+                entity.destroy();
+            }
+        }
+
+        if (eventsListener != null) {
+            HandlerList.unregisterAll(this.eventsListener);
+        }
+
+        if (packetListener != null) {
+            PacketEvents.getAPI()
+                    .getEventManager()
+                    .unregisterListener(this.packetListener);
+        }
+
+        if (executor != null) {
+            executor.shutdownNow();
+            executor = null;
+        }
     }
 
     public Executor getExecutor() {
@@ -276,7 +297,8 @@ public class NameTags extends JavaPlugin {
 
     /**
      * Periodic safety-net that reconciles both missing and stale viewers.
-     * Runs on the main thread every second.
+     * Runs every second from the global region, and checks each tag on the
+     * thread that owns its entity, since it reads that entity's tracker.
      */
     private void reconcileViewers() {
         boolean showSelf = getConfig().getBoolean("show-self", false);
@@ -285,29 +307,39 @@ public class NameTags extends JavaPlugin {
             if (entityManager.isNameTagDisabled(tag.getBukkitEntity().getUniqueId()))
                 continue;
 
-            for (UUID viewerId : Set.copyOf(tag.getPassenger().getViewers())) {
-                Player viewer = Bukkit.getPlayer(viewerId);
-                boolean sameWorld = viewer != null && viewer.isOnline() && viewer.getWorld().equals(tag.getBukkitEntity().getWorld());
-                boolean tracked = sameWorld && tag.getBukkitEntity().getTrackedBy().contains(viewer);
-                boolean canSee = tracked && !(viewer.equals(tag.getBukkitEntity()) && !showSelf) && canViewerSeeNametag(viewer, tag);
-                if (!canSee) {
-                    if (viewer != null) {
-                        hideTagFromViewer(tag, viewer);
-                    } else {
-                        tag.getPassenger().removeViewer(viewerId);
-                    }
+            // A removed entity's scheduler is retired; the stale-tag sweep evicts its tag.
+            Schedulers.nextTick(this, tag.getBukkitEntity(), () -> reconcileViewers(tag, showSelf));
+        }
+    }
+
+    private void reconcileViewers(@NotNull NameTagEntity tag, boolean showSelf) {
+        if (entityManager.getNameTagEntityByUUID(tag.getBukkitEntity().getUniqueId()) != tag)
+            return;
+        if (entityManager.isNameTagDisabled(tag.getBukkitEntity().getUniqueId()))
+            return;
+
+        for (UUID viewerId : Set.copyOf(tag.getPassenger().getViewers())) {
+            Player viewer = Bukkit.getPlayer(viewerId);
+            boolean sameWorld = viewer != null && viewer.isOnline() && viewer.getWorld().equals(tag.getBukkitEntity().getWorld());
+            boolean tracked = sameWorld && tag.getBukkitEntity().getTrackedBy().contains(viewer);
+            boolean canSee = tracked && !(viewer.equals(tag.getBukkitEntity()) && !showSelf) && canViewerSeeNametag(viewer, tag);
+            if (!canSee) {
+                if (viewer != null) {
+                    hideTagFromViewer(tag, viewer);
+                } else {
+                    tag.getPassenger().removeViewer(viewerId);
                 }
             }
+        }
 
-            for (Player tracker : tag.getBukkitEntity().getTrackedBy()) {
-                if (tracker.equals(tag.getBukkitEntity()) && !showSelf)
-                    continue;
-                if (!canViewerSeeNametag(tracker, tag))
-                    continue;
+        for (Player tracker : tag.getBukkitEntity().getTrackedBy()) {
+            if (tracker.equals(tag.getBukkitEntity()) && !showSelf)
+                continue;
+            if (!canViewerSeeNametag(tracker, tag))
+                continue;
 
-                if (!tag.getPassenger().getViewers().contains(tracker.getUniqueId())) {
-                    showTagToViewer(tag, tracker);
-                }
+            if (!tag.getPassenger().getViewers().contains(tracker.getUniqueId())) {
+                showTagToViewer(tag, tracker);
             }
         }
     }
