@@ -14,7 +14,7 @@ public class NeznamyTABHook {
 
     public static void inject(@NotNull NameTags plugin) {
         // Execute on first tick since we don't know when TAB will be available.
-        Bukkit.getScheduler().runTask(plugin, NeznamyTABHook::start);
+        Bukkit.getGlobalRegionScheduler().run(plugin, (task) -> start());
     }
 
     private static void start() {

@@ -41,7 +41,7 @@ public class TestPassenger implements Listener {
 
         event.getPlayer().addPassenger(pig);
 
-        Bukkit.getGlobalRegionScheduler().runDelayed(NameTags.getInstance(), (task) -> pig.remove(), 40L);
+        pig.getScheduler().runDelayed(NameTags.getInstance(), (task) -> pig.remove(), null, 40L);
     }
 
 }

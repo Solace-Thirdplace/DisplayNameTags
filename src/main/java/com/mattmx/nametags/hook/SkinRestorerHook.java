@@ -9,13 +9,12 @@ import net.skinsrestorer.api.SkinsRestorerProvider;
 import net.skinsrestorer.api.event.SkinApplyEvent;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
-import org.bukkit.scheduler.BukkitRunnable;
 import org.jetbrains.annotations.NotNull;
 
 public class SkinRestorerHook {
 
     public static void inject(@NotNull NameTags plugin) {
-        Bukkit.getScheduler().runTaskLater(plugin, SkinRestorerHook::start, 5L);
+        Bukkit.getGlobalRegionScheduler().runDelayed(plugin, (task) -> start(), 5L);
     }
 
     private static void start() {
@@ -41,49 +40,48 @@ public class SkinRestorerHook {
         if (player == null)
             return;
 
-        new BukkitRunnable() {
-            @Override
-            public void run() {
-                NameTags plugin = NameTags.getInstance();
+        // SkinsRestorer fires this off the server thread; rebuild the tag on the
+        // thread that owns the player, on its next tick.
+        player.getScheduler().run(NameTags.getInstance(), (task) -> {
+            NameTags plugin = NameTags.getInstance();
 
-                plugin.getEntityManager().removeLastSentPassengersCache(player.getEntityId());
+            plugin.getEntityManager().removeLastSentPassengersCache(player.getEntityId());
 
-                NameTagEntity entity = plugin.getEntityManager().removeEntity(player);
+            NameTagEntity entity = plugin.getEntityManager().removeEntity(player);
 
-                if (entity != null) {
-                    entity.destroy();
-                }
-
-                NameTagEntity newEntity = plugin.getEntityManager().getOrCreateNameTagEntity(player);
-                newEntity.updateVisibility();
-                newEntity.updateLocation();
-
-                // Only show to self if configured
-                if (plugin.getConfig().getBoolean("show-self", false)) {
-                    newEntity.getPassenger().removeViewer(newEntity.getBukkitEntity().getUniqueId());
-                    newEntity.getPassenger().addViewer(newEntity.getBukkitEntity().getUniqueId());
-                    newEntity.sendPassengerPacket(event.getPlayer(Player.class));
-
-                    player.sendMessage(
-                            Component.text("Please re-join for update your nametag!").color(NamedTextColor.GREEN));
-                }
-
-                // Don't show to other viewers if player is invisible or vanished
-                if (newEntity.isInvisible() || VanishHook.isVanished(player)) {
-                    return;
-                }
-
-                // Re-add viewers who should see this player's nametag in their world
-                for (Player viewer : Bukkit.getOnlinePlayers()) {
-                    if (viewer.equals(player))
-                        continue;
-                    if (!viewer.getWorld().equals(player.getWorld()))
-                        continue;
-                    if (!plugin.canViewerSeeNametag(viewer, newEntity))
-                        continue;
-                    plugin.showTagToViewer(newEntity, viewer);
-                }
+            if (entity != null) {
+                entity.destroy();
             }
-        }.runTask(NameTags.getInstance());
+
+            NameTagEntity newEntity = plugin.getEntityManager().getOrCreateNameTagEntity(player);
+            newEntity.updateVisibility();
+            newEntity.updateLocation();
+
+            // Only show to self if configured
+            if (plugin.getConfig().getBoolean("show-self", false)) {
+                newEntity.getPassenger().removeViewer(newEntity.getBukkitEntity().getUniqueId());
+                newEntity.getPassenger().addViewer(newEntity.getBukkitEntity().getUniqueId());
+                newEntity.sendPassengerPacket(event.getPlayer(Player.class));
+
+                player.sendMessage(
+                        Component.text("Please re-join for update your nametag!").color(NamedTextColor.GREEN));
+            }
+
+            // Don't show to other viewers if player is invisible or vanished
+            if (newEntity.isInvisible() || VanishHook.isVanished(player)) {
+                return;
+            }
+
+            // Re-add viewers who should see this player's nametag in their world
+            for (Player viewer : Bukkit.getOnlinePlayers()) {
+                if (viewer.equals(player))
+                    continue;
+                if (!viewer.getWorld().equals(player.getWorld()))
+                    continue;
+                if (!plugin.canViewerSeeNametag(viewer, newEntity))
+                    continue;
+                plugin.showTagToViewer(newEntity, viewer);
+            }
+        }, null);
     }
 }

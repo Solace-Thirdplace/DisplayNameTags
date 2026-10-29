@@ -4,6 +4,7 @@ import com.github.retrooper.packetevents.PacketEvents;
 import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerDestroyEntities;
 import com.mattmx.nametags.NameTags;
 import com.mattmx.nametags.entity.NameTagEntity;
+import com.mattmx.nametags.utils.Schedulers;
 import de.myzelyam.api.vanish.PlayerHideEvent;
 import de.myzelyam.api.vanish.PlayerShowEvent;
 import org.bukkit.Bukkit;
@@ -50,8 +51,8 @@ public class VanishEventListener implements Listener {
       return;
 
     // Run one tick later so the vanish plugin has already updated per-viewer
-    // visibility.
-    Bukkit.getScheduler().runTask(plugin, () -> {
+    // visibility, on the thread that owns the vanished player.
+    Schedulers.nextTick(plugin, vanishedPlayer, () -> {
       boolean showSelf = plugin.getConfig().getBoolean("show-self", false);
 
       for (Player viewer : Bukkit.getOnlinePlayers()) {
@@ -83,18 +84,22 @@ public class VanishEventListener implements Listener {
     if (shownTag.isInvisible())
       return;
 
-    boolean showSelf = plugin.getConfig().getBoolean("show-self", false);
+    // On the thread that owns the shown player: immediate when already there
+    // (always on Paper), otherwise on that player's next tick.
+    Schedulers.runOn(plugin, shownPlayer, () -> {
+      boolean showSelf = plugin.getConfig().getBoolean("show-self", false);
 
-    // Add all online players who can now see the player back as viewers
-    for (Player viewer : Bukkit.getOnlinePlayers()) {
-      if (viewer.equals(shownPlayer) && !showSelf)
-        continue;
-      if (!viewer.getWorld().equals(shownPlayer.getWorld()))
-        continue;
-      if (!plugin.canViewerSeeNametag(viewer, shownTag))
-        continue;
+      // Add all online players who can now see the player back as viewers
+      for (Player viewer : Bukkit.getOnlinePlayers()) {
+        if (viewer.equals(shownPlayer) && !showSelf)
+          continue;
+        if (!viewer.getWorld().equals(shownPlayer.getWorld()))
+          continue;
+        if (!plugin.canViewerSeeNametag(viewer, shownTag))
+          continue;
 
-      plugin.showTagToViewer(shownTag, viewer);
-    }
+        plugin.showTagToViewer(shownTag, viewer);
+      }
+    });
   }
 }

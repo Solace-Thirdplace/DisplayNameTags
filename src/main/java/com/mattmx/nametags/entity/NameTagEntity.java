@@ -8,10 +8,10 @@ import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerSe
 import com.mattmx.nametags.NameTags;
 import com.mattmx.nametags.entity.trait.TraitHolder;
 import com.mattmx.nametags.hook.VanishHook;
+import com.mattmx.nametags.utils.Schedulers;
 import io.github.retrooper.packetevents.util.SpigotConversionUtil;
 import me.tofaa.entitylib.meta.display.TextDisplayMeta;
 import me.tofaa.entitylib.wrapper.WrapperEntity;
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
@@ -25,12 +25,16 @@ import java.util.function.Consumer;
 public class NameTagEntity {
     private final @NotNull TraitHolder traits = new TraitHolder(this);
     private final @NotNull Entity bukkitEntity;
+    // Captured at creation, on the entity's own thread: Folia guards getEntityId() for non-player
+    // entities, and this is read from packet and executor threads.
+    private final int ownerEntityId;
     private final @NotNull WrapperEntity passenger;
     private @Nullable SpectatorHead standin;
     private float cachedViewRange = -1f;
 
     public NameTagEntity(@NotNull Entity entity) {
         this.bukkitEntity = entity;
+        this.ownerEntityId = entity.getEntityId();
         this.passenger = new WrapperEntity(EntityTypes.TEXT_DISPLAY);
     }
 
@@ -51,8 +55,9 @@ public class NameTagEntity {
         // SPAWN_ENTITY packet, so the packet-interception path in
         // PlayServerSpawnEntityHandler would never fire for them — they would
         // silently not see the nametag. Seed the viewer set now for them.
-        // Entity#getTrackedBy() must be called on the main thread.
-        Bukkit.getScheduler().runTask(plugin, () -> {
+        // Entity#getTrackedBy() must be called on the thread that owns the entity
+        // (the main thread on Paper, the entity's region thread on Folia).
+        Schedulers.nextTick(plugin, this.bukkitEntity, () -> {
             if (!this.bukkitEntity.isValid())
                 return;
 
@@ -142,7 +147,7 @@ public class NameTagEntity {
 
         int[] previousPackets = NameTags.getInstance()
                 .getEntityManager()
-                .getLastSentPassengers(getBukkitEntity().getEntityId())
+                .getLastSentPassengers(this.ownerEntityId)
                 .orElseGet(() -> {
                     int[] bukkitPassengers = this.bukkitEntity.getPassengers()
                             .stream()
@@ -155,7 +160,7 @@ public class NameTagEntity {
                     return passengers;
                 });
 
-        return new WrapperPlayServerSetPassengers(bukkitEntity.getEntityId(), previousPackets);
+        return new WrapperPlayServerSetPassengers(this.ownerEntityId, previousPackets);
     }
 
     public boolean shouldUseStandinFor(@NotNull Player viewer) {
@@ -201,6 +206,13 @@ public class NameTagEntity {
 
     public @Nullable SpectatorHead getStandin() {
         return standin;
+    }
+
+    /**
+     * The owning entity's network id, safe to read from any thread.
+     */
+    public int getOwnerEntityId() {
+        return ownerEntityId;
     }
 
     public @NotNull Entity getBukkitEntity() {
