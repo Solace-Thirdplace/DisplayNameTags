@@ -8,9 +8,8 @@ placeholderapi = "2.11.6"
 packetevents = "2.10.1"
 tab = "5.3.2"
 skinsrestorer = "15.9.0"
-caffeine = "3.2.0"
 entitylib = "2.4.11"
-bstats = "3.1.0"
+bstats = "3.2.1"
 supervanish = "6.2.18-3"
 
 junit-jupiter = "5.13.0"
@@ -23,7 +22,6 @@ placeholderapi = { module = "me.clip:placeholderapi", version.ref = "placeholder
 packetevents = { module = "com.github.retrooper:packetevents-spigot", version.ref = "packetevents" }
 tab = { module = "com.github.NEZNAMY:TAB-API", version.ref = "tab" }
 skinsrestorer = { module = "net.skinsrestorer:skinsrestorer-api", version.ref = "skinsrestorer" }
-caffeine = { module = "com.github.ben-manes.caffeine:caffeine", version.ref = "caffeine" }
 entitylib = { module = "com.github.Tofaa2.EntityLib:spigot", version.ref = "entitylib" }
 bstats = { group = "org.bstats", name = "bstats-bukkit", version.ref = "bstats" }
 supervanish = { module = "com.github.LeonMangler:SuperVanish", version.ref = "supervanish" }

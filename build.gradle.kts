@@ -38,9 +38,6 @@ dependencies {
     compileOnly(libs.skinsrestorer)
     compileOnly(libs.supervanish)
 
-    // Downloaded during runtime
-    compileOnly(libs.caffeine)
-
     // Shaded
     implementation(libs.entitylib)
     implementation(libs.bstats)
